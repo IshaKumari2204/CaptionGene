@@ -1,0 +1,43 @@
+{
+  "counts": {
+    "taco_downloaded_attempted": 1500,
+    "annotations_dropped_degenerate_bbox": 1,
+    "zerowaste_downloaded_attempted": 597,
+    "coco_downloaded_attempted": 320
+  },
+  "kept_images": 2410,
+  "kept_by_source": {
+    "taco": 1493,
+    "zerowaste": 597,
+    "coco": 320
+  },
+  "dropped_counts": {
+    "download_or_decode_error": 5,
+    "near_duplicate": 1,
+    "exact_duplicate": 1
+  },
+  "dropped": {
+    "download_or_decode_error": [
+      "taco_01081",
+      "taco_01161",
+      "taco_01207",
+      "taco_01223",
+      "taco_01243"
+    ],
+    "near_duplicate": [
+      "taco_01157 ~ taco_01131"
+    ],
+    "exact_duplicate": [
+      "taco_01305"
+    ]
+  },
+  "flagged_quality": {
+    "too_dark": 9
+  },
+  "params": {
+    "MIN_SIDE": 224,
+    "PHASH_MAX_DIST": 4,
+    "TINY_AREA_FRAC": 0.0005,
+    "OCCLUSION_IOA": 0.3
+  }
+}

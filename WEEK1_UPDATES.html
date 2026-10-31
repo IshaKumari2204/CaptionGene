@@ -1,0 +1,411 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Week 1 Updates</title><style>body{font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:900px;margin:32px auto;padding:0 16px;line-height:1.55;color:#222;background:#fff}
+table{border-collapse:collapse;margin:12px 0;font-size:14px}th,td{border:1px solid #ccc;padding:5px 9px}th{background:#f2f2f2}
+code{background:#f4f4f4;padding:1px 4px;border-radius:3px;font-size:90%}pre{background:#f4f4f4;padding:12px;overflow-x:auto}
+blockquote{border-left:4px solid #4a8;margin:12px 0;padding:4px 14px;background:#f5fbf7}h1,h2{border-bottom:1px solid #ddd;padding-bottom:4px}
+</style></head><body><h1>Week 1 Updates: Project Setup &amp; Dataset Preparation</h1>
+<p><strong>Project:</strong> Vision-Language Caption Generation for Waste Images (CaptionGene)
+<strong>Week 1 goal (from plan):</strong> Study TACO and ZeroWaste; finalize waste categories, annotation format, and project scope. Collect, clean, and organize diverse waste images into train/val/test splits. Define the annotation schema (object category, material, condition, location, sorting action).</p>
+<p><strong>Status: ✅ All Week 1 tasks completed.</strong></p>
+<hr />
+<h2>1. Summary (TL;DR)</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sources studied and integrated</td>
+<td>TACO, ZeroWaste-f, COCO (bottle / cup / wine glass)</td>
+</tr>
+<tr>
+<td>Clean images in dataset</td>
+<td><strong>2,410</strong> (TACO 1,493 · ZeroWaste 597 · COCO 320)</td>
+</tr>
+<tr>
+<td>Annotated objects (boxes + masks)</td>
+<td><strong>9,391</strong> (mean 3.9 per image, max 90)</td>
+</tr>
+<tr>
+<td>Unified taxonomy</td>
+<td>15 object categories · 9 materials · 13 conditions · 8 sorting actions · 10 scene environments</td>
+</tr>
+<tr>
+<td>Annotation schema</td>
+<td>JSON Schema v1.0 (<code>schema/annotation_schema.json</code>); all 2,410 records validate with <strong>0 errors</strong></td>
+</tr>
+<tr>
+<td>Splits</td>
+<td>train 1,712 / val 355 / test 343 (≈ 71 / 15 / 14 %)</td>
+</tr>
+<tr>
+<td>Reproducible pipeline</td>
+<td>7 Python scripts, fixed seed 42, one command per step</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>2. Dataset study</h2>
+<h3>2.1 TACO (Trash Annotations in Context)</h3>
+<ul>
+<li><strong>What:</strong> 1,500 photos of litter in the wild (beaches, parks, streets, indoors), taken with phones and hosted on Flickr.</li>
+<li><strong>Labels:</strong> 4,784 objects with <strong>instance segmentation masks + boxes</strong>, 60 fine categories in 28 super-categories (e.g. <em>Clear plastic bottle</em>, <em>Drink can</em>, <em>Crisp packet</em>, <em>Cigarette</em>). Also has image-level <strong>scene/background tags</strong> (Vegetation, Pavement, Sand, Water, …).</li>
+<li><strong>Strengths:</strong> very fine-grained object types, real "in-context" clutter, partial occlusion and damaged objects. Its labels mix object type and material (e.g. "Glass bottle"), which makes our material mapping easy.</li>
+<li><strong>Limitations:</strong> small; long-tailed (e.g. only 2 batteries, 8 food-waste objects); many objects are tiny; full-resolution images are large (~3 MB each, up to 4000+ px); EXIF orientation must be applied or the masks are misaligned.</li>
+<li><strong>License:</strong> CC BY 4.0.</li>
+</ul>
+<h3>2.2 ZeroWaste (ZeroWaste-f, CVPR 2022)</h3>
+<ul>
+<li><strong>What:</strong> frames from videos of a real <strong>material recovery facility (MRF) conveyor belt</strong>: very dense, deformed, overlapping waste.</li>
+<li><strong>Labels:</strong> 4,503 frames (train 3,002 / val 572 / test 929, split <strong>by video</strong>), 26,766 polygon annotations in only <strong>4 material classes</strong>: cardboard (66%), soft plastic (25%), rigid plastic (6%), metal (1%).</li>
+<li><strong>Strengths:</strong> extreme clutter and deformation, which is exactly the hard case for VLM captions.</li>
+<li><strong>Limitations:</strong> labels give material only (no object type); paper and other items are left unlabeled as "background"; consecutive frames are near-duplicates; the full archive is 7.5 GB.</li>
+<li><strong>License:</strong> CC BY-NC 4.0 (non-commercial).</li>
+</ul>
+<h3>2.3 COCO 2017 (relevant classes)</h3>
+<ul>
+<li>COCO has no "can" or "trash" classes. The waste-relevant ones are <strong>bottle, cup, wine glass</strong>.</li>
+<li><strong>Role in our dataset:</strong> a <strong>domain-contrast / hard-negative set</strong>. Mostly the objects are <em>in use</em>, not discarded (verified visually, see sample grid). This tests whether a VLM wrongly calls every bottle "waste". So these records get <code>is_discarded: "unknown"</code>, and their material and sorting action are set to <code>needs_review</code>.</li>
+</ul>
+<h3>2.4 Comparison</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>TACO</th>
+<th>ZeroWaste-f</th>
+<th>COCO subset</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scene type</td>
+<td>litter in the wild</td>
+<td>industrial conveyor</td>
+<td>everyday scenes</td>
+</tr>
+<tr>
+<td>Label granularity</td>
+<td>60 object types</td>
+<td>4 materials</td>
+<td>3 object types</td>
+</tr>
+<tr>
+<td>Masks</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Clutter</td>
+<td>low–medium</td>
+<td>very high</td>
+<td>low–medium</td>
+</tr>
+<tr>
+<td>What it adds to CaptionGene</td>
+<td>object type + material + context</td>
+<td>dense clutter + deformation</td>
+<td>non-waste contrast</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>3. Scope decisions (finalized)</h2>
+<ol>
+<li><strong>Image pool:</strong> all of TACO + a <strong>597-frame</strong> subset of ZeroWaste-f + <strong>320</strong> COCO val2017 images. This is about 2.4k images: large enough to be diverse, small enough to caption with 2–3 VLMs and still human-verify in Weeks 2–3.</li>
+<li><strong>ZeroWaste subset:</strong> I downloaded only the selected frames with <strong>HTTP range requests</strong> (the full 7.5 GB zip was never downloaded). Frames are <strong>sampled evenly in time within each video</strong> to avoid near-duplicates, and <strong>ZeroWaste's official video-level split is kept</strong> so frames from one video never leak across train/test.</li>
+<li><strong>COCO filter:</strong> keep val2017 images where at least one bottle / cup / wine glass covers ≥ 1% of the image. Crowd regions are skipped. Selection is balanced between "bottle-dominant" and "cup/glass-dominant" images.</li>
+<li><strong>Image format:</strong> EXIF-corrected, resized so the longest side ≤ 1280 px, JPEG q90. Boxes and polygons are rescaled to match. Original size and source URL are kept for traceability.</li>
+<li><strong>"In-the-wild images from search":</strong> deferred. They add licensing risk and have no ground-truth boxes. The schema already supports <code>source: "wild"</code> if we add a small set later.</li>
+<li><strong>Captioning granularity:</strong> both <strong>image-level captions</strong> and <strong>object-level captions/instructions</strong> linked to a box/mask via <code>object_id</code>.</li>
+</ol>
+<hr />
+<h2>4. Unified taxonomy (<code>configs/taxonomy.yaml</code>)</h2>
+<p>Each object has four independent fields, so captions can be composed as <strong>"<condition> <material> <category>"</strong> → <em>"crushed plastic bottle"</em>.</p>
+<p><strong>Object categories (15):</strong> <code>bottle_jar, can, carton_box, cup, bag_wrapper, container_packaging, cap_lid, paper, straw_utensil, cigarette, food_waste, glass_fragment, hazardous, other_litter, unspecified</code>.
+<code>unspecified</code> is used for ZeroWaste rigid/soft plastic and metal, whose object type is unknown. The VLM proposes a type in Week 2 and a human verifies it in Week 3.</p>
+<p><strong>Materials (9):</strong> <code>plastic, metal, glass, paper_cardboard, organic, composite, textile_rubber, e_waste, unknown</code>.</p>
+<p><strong>Conditions (13, multi-label):</strong> <code>intact, crushed, dented, crumpled, torn, broken, open, soiled, wet, burnt, faded, partially_occluded, heavily_occluded</code>. These are empty for now and get filled in Weeks 2–3. Exception: TACO "Broken glass" is pre-filled with <code>broken</code>.</p>
+<p><strong>Sorting actions (8):</strong> <code>recycle_plastic, recycle_metal, recycle_paper, recycle_glass, compost, landfill, hazardous_dropoff, needs_review</code>. Each source label has a default action, plus <strong>condition-based overrides</strong> (e.g. a <em>soiled</em> paper item goes to landfill).</p>
+<p><strong>Location:</strong> box + normalized box + 3×3 grid region (e.g. <code>bottom-left</code>) + size bucket (small &lt; 1%, medium &lt; 10%, large ≥ 10% of the image).</p>
+<p><strong>Scene:</strong> environment tags (TACO's scene labels are mapped; ZeroWaste = <code>conveyor_belt</code>), clutter level (single / sparse / moderate / dense, from the object count), per-category counts, and <code>is_discarded</code>.</p>
+<p>All <strong>60 TACO classes, 4 ZeroWaste classes and 3 COCO classes are mapped explicitly</strong>. Examples:</p>
+<table>
+<thead>
+<tr>
+<th>Source label</th>
+<th>category</th>
+<th>material</th>
+<th>detail</th>
+<th>default action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TACO "Clear plastic bottle"</td>
+<td>bottle_jar</td>
+<td>plastic</td>
+<td>PET</td>
+<td>recycle_plastic</td>
+</tr>
+<tr>
+<td>TACO "Drink carton"</td>
+<td>carton_box</td>
+<td>composite</td>
+<td>tetra_pak</td>
+<td>recycle_paper</td>
+</tr>
+<tr>
+<td>TACO "Crisp packet"</td>
+<td>bag_wrapper</td>
+<td>composite</td>
+<td>metallised</td>
+<td>landfill</td>
+</tr>
+<tr>
+<td>TACO "Pizza box"</td>
+<td>carton_box</td>
+<td>paper_cardboard</td>
+<td>–</td>
+<td>recycle_paper (→ landfill if soiled)</td>
+</tr>
+<tr>
+<td>ZeroWaste "soft_plastic"</td>
+<td>unspecified</td>
+<td>plastic</td>
+<td>film</td>
+<td>landfill</td>
+</tr>
+<tr>
+<td>COCO "bottle"</td>
+<td>bottle_jar</td>
+<td>unknown</td>
+<td>–</td>
+<td>needs_review</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. Annotation schema (<code>schema/annotation_schema.json</code>)</h2>
+<p>There is one JSON record per image. It is stored as JSONL (<code>data/processed/*.jsonl</code>), and a flat per-object CSV (<code>objects.csv</code>) is provided for spreadsheets. Abbreviated example of a real record:</p>
+<pre><code class="language-json">{
+  &quot;image_id&quot;: &quot;taco_00001&quot;, &quot;source&quot;: &quot;taco&quot;, &quot;split&quot;: &quot;val&quot;,
+  &quot;file_name&quot;: &quot;images/taco/taco_00001.jpg&quot;, &quot;width&quot;: 960, &quot;height&quot;: 1280,
+  &quot;orig_width&quot;: 1537, &quot;orig_height&quot;: 2049, &quot;license&quot;: &quot;CC BY 4.0 (TACO)&quot;,
+  &quot;scene&quot;: {&quot;environment&quot;: [&quot;indoor_manmade&quot;], &quot;clutter_level&quot;: &quot;sparse&quot;,
+            &quot;object_count&quot;: 2, &quot;category_counts&quot;: {&quot;carton_box&quot;: 2},
+            &quot;is_discarded&quot;: &quot;yes&quot;, &quot;description&quot;: null},
+  &quot;objects&quot;: [{
+      &quot;object_id&quot;: &quot;taco_00001_o000&quot;, &quot;source_category&quot;: &quot;Meal carton&quot;,
+      &quot;category&quot;: &quot;carton_box&quot;, &quot;material&quot;: &quot;paper_cardboard&quot;, &quot;material_detail&quot;: null,
+      &quot;condition&quot;: [], &quot;sorting_action&quot;: &quot;recycle_paper&quot;,
+      &quot;bbox&quot;: [0.6, 285.4, 892.5, 948.8], &quot;bbox_norm&quot;: [0.0006, 0.223, 0.9297, 0.7412],
+      &quot;segmentation&quot;: [[...]], &quot;location&quot;: {&quot;region&quot;: &quot;center&quot;, &quot;size&quot;: &quot;large&quot;},
+      &quot;flags&quot;: [], &quot;caption&quot;: null, &quot;instruction&quot;: null }],
+  &quot;captions&quot;: [],
+  &quot;review&quot;: {&quot;status&quot;: &quot;unreviewed&quot;, &quot;reviewer&quot;: null, &quot;notes&quot;: null, &quot;updated_at&quot;: null}
+}
+</code></pre>
+<ul>
+<li><code>captions[]</code> will hold VLM candidates (<code>model</code>, <code>prompt</code>, <code>clip_score</code>, <code>review_score</code> 1–5, <code>hallucinated_objects</code>, <code>status</code> = pending / approved / edited / rejected). This matches the Streamlit app features (approve / reject / edit / filter / export).</li>
+<li><code>objects[].caption</code> and <code>objects[].instruction</code> hold the verified object caption and the grounded sorting instruction (Week 3).</li>
+<li>The draft annotation guidelines (caption template, anti-hallucination rules, review-score rubric) are in <code>docs/annotation_guidelines.md</code>.</li>
+</ul>
+<hr />
+<h2>6. Data pipeline (what was implemented)</h2>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Script</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>01_download_taco.py</code></td>
+<td>Downloads 1,500 TACO images (parallel, resumable, hard timeout), applies EXIF orientation, resizes, rescales boxes and masks, merges scene tags by majority vote</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>02_download_zerowaste.py</code></td>
+<td>Range-request download of 600 evenly spaced frames across all videos, keeping the official splits</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>03_download_coco.py</code></td>
+<td>Extracts only <code>instances_val2017.json</code> from the annotation zip, filters and balances images</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>04_build_manifest.py</code></td>
+<td>Cleaning + mapping to the unified schema + location/occlusion/quality flags</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>05_make_splits.py</code></td>
+<td>Stratified train/val/test splits, plus the CSV export</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>06_dataset_stats.py</code></td>
+<td>Statistics tables (<code>data/reports/stats.md</code>) + visual sample grid</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>07_validate_schema.py</code></td>
+<td>Validates every record against the JSON Schema, checks files exist and boxes lie inside images</td>
+</tr>
+</tbody>
+</table>
+<h3>Cleaning results (<code>data/reports/cleaning_report.json</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Removed / flagged</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Download failures (TACO server timeouts)</td>
+<td>5 images removed</td>
+</tr>
+<tr>
+<td>Below 224 px resolution</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Image size ≠ annotation frame (EXIF/rotation errors)</td>
+<td>0 (EXIF fix verified)</td>
+</tr>
+<tr>
+<td>Degenerate boxes (&lt; 2 px)</td>
+<td>1 annotation removed</td>
+</tr>
+<tr>
+<td>Boxes slightly outside the image</td>
+<td>clipped to the border</td>
+</tr>
+<tr>
+<td>Exact duplicates (MD5)</td>
+<td>1 image removed (taco_01305)</td>
+</tr>
+<tr>
+<td>Near-duplicates (perceptual hash, Hamming ≤ 4)</td>
+<td>1 image removed (taco_01157 ≈ taco_01131)</td>
+</tr>
+<tr>
+<td>Too dark / too bright / blurry</td>
+<td>9 flagged <em>too_dark</em> (kept, for review)</td>
+</tr>
+<tr>
+<td>Tiny objects (&lt; 0.05% of image)</td>
+<td>1,205 flagged <code>tiny</code></td>
+</tr>
+<tr>
+<td>Possibly occluded (&gt; 30% of box covered by other boxes)</td>
+<td>2,049 flagged <code>possibly_occluded</code></td>
+</tr>
+</tbody>
+</table>
+<p>A visual check (<code>data/reports/sample_grid.jpg</code>) confirms that boxes stay aligned after EXIF correction and resizing for all three sources.</p>
+<h3>Split strategy</h3>
+<ul>
+<li><strong>ZeroWaste:</strong> official video-level split (prevents near-duplicate frames leaking into test).</li>
+<li><strong>TACO + COCO:</strong> greedy <strong>multi-label iterative stratification</strong>. Images are assigned rarest-category-first so every category appears in train, val and test in roughly 70/15/15 proportion (hazardous, with only 2 objects, is the exception).</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>split</th>
+<th style="text-align: right;">TACO</th>
+<th style="text-align: right;">ZeroWaste</th>
+<th style="text-align: right;">COCO</th>
+<th style="text-align: right;">total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>train</td>
+<td style="text-align: right;">1,063</td>
+<td style="text-align: right;">418</td>
+<td style="text-align: right;">231</td>
+<td style="text-align: right;"><strong>1,712</strong></td>
+</tr>
+<tr>
+<td>val</td>
+<td style="text-align: right;">222</td>
+<td style="text-align: right;">90</td>
+<td style="text-align: right;">43</td>
+<td style="text-align: right;"><strong>355</strong></td>
+</tr>
+<tr>
+<td>test</td>
+<td style="text-align: right;">208</td>
+<td style="text-align: right;">89</td>
+<td style="text-align: right;">46</td>
+<td style="text-align: right;"><strong>343</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>7. Dataset statistics (pre-captioning)</h2>
+<p>Full tables are in <code>data/reports/stats.md</code>.</p>
+<p><strong>Objects per category:</strong> carton_box 2,627 · unspecified 1,234 · other_litter 1,127 · bag_wrapper 870 · bottle_jar 828 · cup 812 · cigarette 660 · cap_lid 375 · can 273 · straw_utensil 198 · paper 153 · glass_fragment 138 · container_packaging 86 · food_waste 8 · hazardous 2</p>
+<p><strong>Objects per material:</strong> plastic 3,384 · paper_cardboard 2,767 · unknown 1,346 · composite 824 · metal 592 · glass 432 · textile_rubber 36 · organic 8 · e_waste 2</p>
+<p><strong>Clutter:</strong> single 773 · sparse 721 · moderate 742 · dense 174 images</p>
+<p><strong>Environments:</strong> vegetation 754 · sand/dirt 597 · conveyor belt 597 · pavement 433 · unknown 415 (COCO) · indoor 112 · water 84 · clean 37 · trash pile 5</p>
+<p><strong>Object sizes:</strong> small 4,094 · medium 4,371 · large 926</p>
+<hr />
+<h2>8. Observations &amp; risks identified</h2>
+<ol>
+<li><strong>Long tail:</strong> food_waste (8) and hazardous (2) are too rare to evaluate on their own. I plan to merge them into <code>other_litter</code> for the metrics, or add a few targeted images.</li>
+<li><strong>ZeroWaste labels are incomplete for captioning:</strong> many visible objects (especially paper) are unlabeled background, and object types are missing (<code>unspecified</code>). This is a good case for the human-verification step, and a likely source of "hallucination" false alarms that the evaluation must account for.</li>
+<li><strong>COCO objects are mostly not waste:</strong> they will be kept as a contrast set and reported separately in evaluation.</li>
+<li><strong>Many tiny objects</strong> (especially cigarette butts): object-level captions will be required only for non-tiny objects. Tiny ones still count in scene captions.</li>
+<li><strong>Sorting rules are region-dependent:</strong> the defaults follow common municipal rules and are configurable in <code>taxonomy.yaml</code>.</li>
+<li><strong>License:</strong> ZeroWaste is non-commercial, so the combined dataset will be released under <strong>CC BY-NC 4.0</strong>.</li>
+<li>Data size on disk: about 0.9 GB (images 810 MB).</li>
+</ol>
+<hr />
+<h2>9. Files produced this week</h2>
+<pre><code>README.md                      project overview + how to reproduce
+WEEK1_UPDATES.md               this report
+requirements.txt
+configs/taxonomy.yaml          categories, materials, conditions, actions, all label mappings
+schema/annotation_schema.json  JSON Schema v1.0
+docs/annotation_guidelines.md  caption style, verification checklist, review rubric (draft v0.1)
+scripts/01…07_*.py             full data pipeline
+data/processed/                manifest_all.jsonl, train.jsonl, val.jsonl, test.jsonl, objects.csv
+data/reports/                  cleaning_report.json, stats.json, stats.md, sample_grid.jpg
+data/images/{taco,zerowaste,coco}/   2,410 processed images
+</code></pre>
+<hr />
+<h2>10. Plan for Week 2 (Caption Generation)</h2>
+<ul>
+<li>Set up BLIP-2 (<code>Salesforce/blip2-opt-2.7b</code>) and Qwen2.5-VL (<code>Qwen/Qwen2.5-VL-7B-Instruct</code>; 3B if GPU memory is tight), with LLaVA as an optional third model.</li>
+<li>Design prompt templates for image-level captions and <strong>object-level crop/box-prompted captions</strong> that ask for material, condition and location.</li>
+<li>Generate candidates for all 2,410 images, store them in <code>captions[]</code> with model and prompt metadata, and compute CLIPScore.</li>
+<li>Start the Streamlit curation app skeleton (image browser, model selector, side-by-side BLIP-2 vs Qwen2.5-VL view).</li>
+<li><strong>Need:</strong> GPU access (≥ 16 GB VRAM recommended for Qwen2.5-VL-7B).</li>
+</ul>
+<hr />
+<h2>11. Update for the professor (copy/paste)</h2>
+<blockquote>
+<p><strong>Week 1 update – CaptionGene (Waste Image Captioning)</strong></p>
+<p>Week 1 (project setup &amp; dataset preparation) is complete:</p>
+<ol>
+<li><strong>Dataset study:</strong> I analysed TACO (1,500 in-the-wild litter images, 60 classes, masks), ZeroWaste-f (4,503 conveyor-belt frames, 4 material classes, very dense clutter) and COCO (bottle / cup / wine glass). I documented what each one contributes and its limits: TACO is long-tailed, ZeroWaste has material-only labels and near-duplicate video frames, and COCO objects are mostly not waste.</li>
+<li><strong>Unified taxonomy &amp; schema:</strong> I defined 15 object categories, 9 materials, 13 physical conditions, 8 sorting actions and scene context (environment + clutter level). I explicitly mapped all 60 TACO, 4 ZeroWaste and 3 COCO labels onto it, and formalised the annotation format as a JSON Schema with fields for object category, material, condition, location (box, mask, grid region, size), sorting action, VLM caption candidates and review status.</li>
+<li><strong>Data collection &amp; cleaning:</strong> I built a reproducible 7-step Python pipeline that downloads, EXIF-corrects, resizes, de-duplicates (MD5 + perceptual hash) and quality-checks the images. The result is <strong>2,410 clean images with 9,391 annotated objects</strong> (TACO 1,493, ZeroWaste 597, COCO 320). All records pass schema validation.</li>
+<li><strong>Splits:</strong> train / val / test = 1,712 / 355 / 343. ZeroWaste keeps its video-level split to avoid leakage, and TACO/COCO use multi-label stratification so every category appears in all splits.</li>
+<li><strong>Deliverables:</strong> taxonomy config, JSON schema, draft annotation guidelines, dataset statistics report and a visual sanity-check grid.</li>
+</ol>
+<p><strong>Next week:</strong> generate captions with BLIP-2 and Qwen2.5-VL (object- and image-level), compute CLIPScore, and start the Streamlit curation app.
+<strong>Points for your input:</strong> (a) is the 15-category taxonomy at the right granularity? (b) is it OK to use COCO as a "non-waste" contrast set? (c) could I get GPU access for Qwen2.5-VL-7B?</p>
+</blockquote></body></html>

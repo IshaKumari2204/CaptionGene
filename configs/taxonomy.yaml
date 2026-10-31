@@ -1,0 +1,178 @@
+# CaptionGene unified waste taxonomy (v1.0, Week 1)
+#
+# Every object gets four independent labels:
+#   category        -> WHAT the object is (its form / function)
+#   material        -> WHAT it is made of
+#   condition       -> its physical state (multi-label, filled in Week 2-3 by VLM + human)
+#   sorting_action  -> WHICH bin it should go to (default rule, region-dependent)
+#
+# Keeping these as separate fields lets us compose structured captions like
+#   "<condition> <material> <category>"  ->  "crushed plastic bottle"
+
+version: "1.0"
+
+categories:
+  bottle_jar:          "Bottles and jars (drink bottles, glass jars)"
+  can:                 "Metal cans (drink cans, food tins, aerosol cans)"
+  carton_box:          "Cartons and cardboard boxes (drink/egg/meal cartons, pizza & corrugated boxes)"
+  cup:                 "Cups and drinking glasses (paper, plastic, foam, glass)"
+  bag_wrapper:         "Bags, wrappers and films (carrier bags, crisp packets, plastic film, paper bags)"
+  container_packaging: "Rigid containers and packaging (tubs, trays, takeaway boxes, blister packs, tubes)"
+  cap_lid:             "Bottle caps and lids"
+  paper:               "Loose paper items (sheets, magazines, tissues, toilet tubes)"
+  straw_utensil:       "Straws and disposable cutlery"
+  cigarette:           "Cigarette butts"
+  food_waste:          "Food scraps / organic waste"
+  glass_fragment:      "Broken glass pieces"
+  hazardous:           "Hazardous items (batteries)"
+  other_litter:        "Everything else (foil, pop tabs, rope, shoes, styrofoam, gloves, scrap metal, unlabeled)"
+  unspecified:         "Object type not given by the source (ZeroWaste material-only labels) - to be filled in Week 2/3"
+
+materials:
+  plastic:          "Rigid or soft plastics, incl. foam (EPS)"
+  metal:            "Aluminium, steel, tin"
+  glass:            "Glass"
+  paper_cardboard:  "Paper, cardboard, paperboard"
+  organic:          "Food / biodegradable"
+  composite:        "Multi-layer or mixed materials (Tetra Pak, crisp packets, blister packs, paper cups)"
+  textile_rubber:   "Textile, leather, rubber, rope"
+  e_waste:          "Batteries / electronics"
+  unknown:          "Cannot be determined from the source label"
+
+conditions:          # multi-label; empty list = not yet annotated
+  - intact
+  - crushed          # flattened / compressed
+  - dented
+  - crumpled         # paper / film
+  - torn
+  - broken           # shattered, snapped
+  - open             # opened / unsealed / lid off
+  - soiled           # food residue, dirt, stains
+  - wet
+  - burnt
+  - faded            # weathered / sun-bleached
+  - partially_occluded
+  - heavily_occluded
+
+sorting_actions:
+  recycle_plastic:   "Plastic recycling bin"
+  recycle_metal:     "Metal recycling bin"
+  recycle_paper:     "Paper / cardboard recycling bin"
+  recycle_glass:     "Glass recycling bin"
+  compost:           "Organic / compost bin"
+  landfill:          "General waste (non-recyclable)"
+  hazardous_dropoff: "Special collection point (batteries, e-waste)"
+  needs_review:      "Cannot be decided from the source label alone"
+
+# Condition-dependent override rules (applied in Week 3 once conditions are known)
+sorting_overrides:
+  - if: {material: paper_cardboard, condition_has: soiled}
+    then: landfill        # greasy pizza box, dirty paper
+  - if: {category: glass_fragment}
+    then: landfill        # broken glass is wrapped and binned, not recycled
+
+scene_environments:
+  - indoor_manmade
+  - pavement_urban
+  - sand_dirt_pebbles
+  - vegetation
+  - water
+  - trash_pile
+  - clean_background
+  - conveyor_belt     # ZeroWaste: material recovery facility
+  - household_tabletop # COCO-style everyday scenes
+  - unknown
+
+clutter_levels:       # derived from number of annotated objects
+  single:   [1, 1]
+  sparse:   [2, 3]
+  moderate: [4, 9]
+  dense:    [10, 100000]
+
+# ---------------------------------------------------------------------------
+# Source label -> unified label maps
+# value = [category, material, material_detail, sorting_action]
+# ---------------------------------------------------------------------------
+source_maps:
+  taco:
+    "Aluminium foil":            [other_litter,        metal,           aluminium,     recycle_metal]
+    "Battery":                   [hazardous,           e_waste,         battery,       hazardous_dropoff]
+    "Aluminium blister pack":    [container_packaging, composite,       blister,       landfill]
+    "Carded blister pack":       [container_packaging, composite,       blister,       landfill]
+    "Other plastic bottle":      [bottle_jar,          plastic,         null,          recycle_plastic]
+    "Clear plastic bottle":      [bottle_jar,          plastic,         PET,           recycle_plastic]
+    "Glass bottle":              [bottle_jar,          glass,           null,          recycle_glass]
+    "Plastic bottle cap":        [cap_lid,             plastic,         null,          recycle_plastic]
+    "Metal bottle cap":          [cap_lid,             metal,           null,          recycle_metal]
+    "Broken glass":              [glass_fragment,      glass,           null,          landfill]
+    "Food Can":                  [can,                 metal,           steel,         recycle_metal]
+    "Aerosol":                   [can,                 metal,           aerosol,       recycle_metal]
+    "Drink can":                 [can,                 metal,           aluminium,     recycle_metal]
+    "Toilet tube":               [paper,               paper_cardboard, null,          recycle_paper]
+    "Other carton":              [carton_box,          paper_cardboard, null,          recycle_paper]
+    "Egg carton":                [carton_box,          paper_cardboard, null,          recycle_paper]
+    "Drink carton":              [carton_box,          composite,       tetra_pak,     recycle_paper]
+    "Corrugated carton":         [carton_box,          paper_cardboard, corrugated,    recycle_paper]
+    "Meal carton":               [carton_box,          paper_cardboard, null,          recycle_paper]
+    "Pizza box":                 [carton_box,          paper_cardboard, null,          recycle_paper]
+    "Paper cup":                 [cup,                 composite,       plastic_lined, landfill]
+    "Disposable plastic cup":    [cup,                 plastic,         null,          recycle_plastic]
+    "Foam cup":                  [cup,                 plastic,         EPS_foam,      landfill]
+    "Glass cup":                 [cup,                 glass,           null,          landfill]
+    "Other plastic cup":         [cup,                 plastic,         null,          recycle_plastic]
+    "Food waste":                [food_waste,          organic,         null,          compost]
+    "Glass jar":                 [bottle_jar,          glass,           null,          recycle_glass]
+    "Plastic lid":               [cap_lid,             plastic,         null,          recycle_plastic]
+    "Metal lid":                 [cap_lid,             metal,           null,          recycle_metal]
+    "Other plastic":             [other_litter,        plastic,         null,          landfill]
+    "Magazine paper":            [paper,               paper_cardboard, null,          recycle_paper]
+    "Tissues":                   [paper,               paper_cardboard, tissue,        compost]
+    "Wrapping paper":            [paper,               paper_cardboard, null,          recycle_paper]
+    "Normal paper":              [paper,               paper_cardboard, null,          recycle_paper]
+    "Paper bag":                 [bag_wrapper,         paper_cardboard, null,          recycle_paper]
+    "Plastified paper bag":      [bag_wrapper,         composite,       null,          landfill]
+    "Plastic film":              [bag_wrapper,         plastic,         film,          landfill]
+    "Six pack rings":            [other_litter,        plastic,         null,          landfill]
+    "Garbage bag":               [bag_wrapper,         plastic,         film,          landfill]
+    "Other plastic wrapper":     [bag_wrapper,         plastic,         film,          landfill]
+    "Single-use carrier bag":    [bag_wrapper,         plastic,         film,          landfill]
+    "Polypropylene bag":         [bag_wrapper,         plastic,         woven_PP,      landfill]
+    "Crisp packet":              [bag_wrapper,         composite,       metallised,    landfill]
+    "Spread tub":                [container_packaging, plastic,         null,          recycle_plastic]
+    "Tupperware":                [container_packaging, plastic,         null,          recycle_plastic]
+    "Disposable food container": [container_packaging, plastic,         null,          recycle_plastic]
+    "Foam food container":       [container_packaging, plastic,         EPS_foam,      landfill]
+    "Other plastic container":   [container_packaging, plastic,         null,          recycle_plastic]
+    "Plastic glooves":           [other_litter,        plastic,         glove,         landfill]
+    "Plastic utensils":          [straw_utensil,       plastic,         null,          landfill]
+    "Pop tab":                   [other_litter,        metal,           aluminium,     recycle_metal]
+    "Rope & strings":            [other_litter,        textile_rubber,  null,          landfill]
+    "Scrap metal":               [other_litter,        metal,           null,          recycle_metal]
+    "Shoe":                      [other_litter,        textile_rubber,  null,          landfill]
+    "Squeezable tube":           [container_packaging, composite,       null,          landfill]
+    "Plastic straw":             [straw_utensil,       plastic,         null,          landfill]
+    "Paper straw":               [straw_utensil,       paper_cardboard, null,          compost]
+    "Styrofoam piece":           [other_litter,        plastic,         EPS_foam,      landfill]
+    "Unlabeled litter":          [other_litter,        unknown,         null,          needs_review]
+    "Cigarette":                 [cigarette,           composite,       null,          landfill]
+
+  zerowaste:   # material-only labels from a recycling-facility conveyor belt
+    "rigid_plastic": [unspecified, plastic,         rigid, recycle_plastic]
+    "cardboard":     [carton_box,  paper_cardboard, null,  recycle_paper]
+    "metal":         [unspecified, metal,           null,  recycle_metal]
+    "soft_plastic":  [unspecified, plastic,         film,  landfill]
+
+  coco:        # everyday scenes; objects are not necessarily discarded
+    "bottle":     [bottle_jar, unknown, null, needs_review]
+    "cup":        [cup,        unknown, null, needs_review]
+    "wine glass": [cup,        glass,   null, needs_review]
+
+  taco_scene:
+    "Clean":               clean_background
+    "Indoor, Man-made":    indoor_manmade
+    "Pavement":            pavement_urban
+    "Sand, Dirt, Pebbles": sand_dirt_pebbles
+    "Trash":               trash_pile
+    "Vegetation":          vegetation
+    "Water":               water
+    "unknown":             unknown   # undocumented background id 7 in TACO

@@ -1,0 +1,126 @@
+# CaptionGene captioning config (Week 2)
+#
+# models      -> which VLMs can be used, how to load them, which prompts they get
+# prompts     -> prompt templates ({placeholders} are filled per image / object)
+# generation  -> decoding settings shared by all models
+# pilot       -> the image subset used for the local (CPU / Apple-silicon) pilot run
+#
+# backend "blip": BLIP / BLIP-2 style models, prompt is a plain text prefix
+# backend "chat": instruction-tuned VLMs (Qwen2.5-VL, LLaVA, SmolVLM) using the chat template
+
+version: "1.0"
+
+models:
+  # ---- target models (need a GPU, see WEEK2_UPDATES.md section 7) ----
+  blip2:
+    hf_id: Salesforce/blip2-opt-2.7b
+    label: BLIP-2 (OPT-2.7B)
+    family: blip
+    backend: blip
+    dtype: float16
+    prompts: {image: blip2_image, object: blip2_object}
+  qwen2.5-vl-7b:
+    hf_id: Qwen/Qwen2.5-VL-7B-Instruct
+    label: Qwen2.5-VL-7B-Instruct
+    family: instruct
+    backend: chat
+    dtype: bfloat16
+    max_pixels: 802816          # 1024*28*28 -> caps visual tokens per image
+    prompts: {image: chat_image, object: chat_object_json}
+  qwen2.5-vl-3b:
+    hf_id: Qwen/Qwen2.5-VL-3B-Instruct
+    label: Qwen2.5-VL-3B-Instruct
+    family: instruct
+    backend: chat
+    dtype: bfloat16
+    max_pixels: 802816
+    prompts: {image: chat_image, object: chat_object_json}
+  llava-1.5-7b:
+    hf_id: llava-hf/llava-1.5-7b-hf
+    label: LLaVA-1.5-7B
+    family: instruct
+    backend: chat
+    dtype: float16
+    prompts: {image: chat_image, object: chat_object_json}
+
+  # ---- small stand-ins used for the local pilot (run on an 8 GB Apple M1) ----
+  blip-base:
+    hf_id: Salesforce/blip-image-captioning-base
+    label: BLIP-base (pilot stand-in for BLIP-2)
+    family: blip
+    backend: blip
+    dtype: float32
+    prompts: {image: blip_image, object: blip_object}
+  smolvlm-256m:
+    hf_id: HuggingFaceTB/SmolVLM-256M-Instruct
+    label: SmolVLM-256M-Instruct (pilot stand-in for Qwen2.5-VL)
+    family: instruct
+    backend: chat
+    dtype: float32
+    image_longest_edge: 512     # SmolVLM default splits big images into many tiles
+    prompts: {image: chat_image_short, object: chat_object}   # too small to follow the JSON prompt
+
+  # ---- rule-based baseline: composes a caption from the structured labels only ----
+  template:
+    label: Label template (no VLM)
+    family: template
+    backend: template
+
+# Default pair shown side by side in the curation app / used for the report's head-to-head
+# (first two models present; the 3B Qwen is the fallback for a 16 GB Colab T4)
+compare_pair: [blip2, qwen2.5-vl-7b, qwen2.5-vl-3b]
+pilot_compare_pair: [blip-base, smolvlm-256m]
+
+prompts:
+  blip_image: "a photo of"
+  blip_object: "a close-up photo of"
+  blip2_image: ""                       # BLIP-2 captions best unconditionally
+  blip2_object: "Question: What is this waste object and what material is it made of? Answer:"
+
+  chat_image: >-
+    You are annotating images for a waste-sorting dataset.
+    Describe this image in one or two sentences.
+    Name the visible waste items, what material each one is made of (plastic, metal, glass,
+    paper or cardboard, ...) and its physical state (for example crushed, torn, dirty, intact),
+    then say where they are lying.
+    Only describe what you can clearly see. Do not mention brand names.
+
+  # Shorter version for small models: listing example words ("crushed, torn") in the prompt
+  # made SmolVLM-256M repeat them for every image (prompt leakage)
+  chat_image_short: >-
+    Describe this image in one sentence. Mention each piece of rubbish,
+    what it is made of, and the surface it lies on.
+
+  # {label}, {material}, {region} come from the source annotation of this object.
+  # The label is given as a hint: the goal is an accurate caption for a box whose class is known,
+  # so the model only has to add condition, colour and context.
+  chat_object: >-
+    Describe the {label} in this photo in a few words, including its colour and condition.
+
+  chat_object_json: >-
+    This picture is a crop around one waste object from a larger photo.
+    The dataset label for it is "{label}" and its material is "{material}".
+    It lies in the {region} part of the full photo.
+    Answer with JSON only, using exactly these keys:
+    {{"caption": "<short phrase: condition, colour, material, object>",
+    "condition": [<zero or more of: {conditions}>]}}
+
+generation:
+  max_new_tokens_image: 60
+  max_new_tokens_object: 60
+  num_beams: 1
+  do_sample: false
+  num_candidates: 1         # >1 switches to sampling (temperature below) to get diverse candidates
+  temperature: 0.7
+  no_repeat_ngram_size: 3    # BLIP backend only: stops loops like "a bag containing a bag containing ..."
+
+object_crop:
+  context_pad: 0.15         # enlarge the box by 15% on each side so the model sees some context
+  min_side: 32              # crops smaller than this are upscaled before captioning
+  skip_flags: [tiny]        # objects with these flags get no object caption (guidelines rule 7)
+  max_objects_per_image: 8  # largest objects first; keeps dense ZeroWaste frames tractable
+
+pilot:
+  images_per_source: {taco: 30, zerowaste: 15, coco: 15}
+  splits: [val]             # pilot images come from the validation split
+  seed: 42

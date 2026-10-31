@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "captiongene/annotation_schema/v1.1",
+  "title": "CaptionGene waste image record",
+  "description": "One record per image. Objects carry structured labels (category, material, condition, location, sorting action) and are later linked to captions and sorting instructions. v1.1 (Week 2): object-level caption candidates, model/prompt provenance, auto checks.",
+  "type": "object",
+  "required": [
+    "image_id",
+    "source",
+    "file_name",
+    "width",
+    "height",
+    "split",
+    "scene",
+    "objects",
+    "captions",
+    "review"
+  ],
+  "properties": {
+    "image_id": {
+      "type": "string",
+      "description": "Unique id, e.g. taco_00012, zerowaste_train_00340, coco_000000012345"
+    },
+    "source": {
+      "enum": [
+        "taco",
+        "zerowaste",
+        "coco",
+        "wild"
+      ]
+    },
+    "source_image_id": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "source_file_name": {
+      "type": "string"
+    },
+    "source_split": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "video_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ZeroWaste video the frame comes from"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Path relative to data/, e.g. images/taco/taco_00012.jpg"
+    },
+    "width": {
+      "type": "integer"
+    },
+    "height": {
+      "type": "integer"
+    },
+    "orig_width": {
+      "type": "integer"
+    },
+    "orig_height": {
+      "type": "integer"
+    },
+    "license": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "train",
+        "val",
+        "test"
+      ]
+    },
+    "phash": {
+      "type": "string"
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "brightness": {
+          "type": "number"
+        },
+        "sharpness": {
+          "type": "number"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "blurry",
+              "too_dark",
+              "too_bright"
+            ]
+          }
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": [
+        "environment",
+        "clutter_level",
+        "object_count"
+      ],
+      "properties": {
+        "environment": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "indoor_manmade",
+              "pavement_urban",
+              "sand_dirt_pebbles",
+              "vegetation",
+              "water",
+              "trash_pile",
+              "clean_background",
+              "conveyor_belt",
+              "household_tabletop",
+              "unknown"
+            ]
+          }
+        },
+        "clutter_level": {
+          "enum": [
+            "single",
+            "sparse",
+            "moderate",
+            "dense"
+          ]
+        },
+        "object_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "category_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "is_discarded": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ],
+          "description": "COCO objects may still be in use"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Free-text scene context (filled Week 2/3)"
+        }
+      }
+    },
+    "objects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "object_id",
+          "category",
+          "material",
+          "condition",
+          "bbox",
+          "location",
+          "sorting_action"
+        ],
+        "properties": {
+          "object_id": {
+            "type": "string"
+          },
+          "source_category": {
+            "type": "string",
+            "description": "Original label from the source dataset"
+          },
+          "category": {
+            "enum": [
+              "bottle_jar",
+              "can",
+              "carton_box",
+              "cup",
+              "bag_wrapper",
+              "container_packaging",
+              "cap_lid",
+              "paper",
+              "straw_utensil",
+              "cigarette",
+              "food_waste",
+              "glass_fragment",
+              "hazardous",
+              "other_litter",
+              "unspecified"
+            ]
+          },
+          "material": {
+            "enum": [
+              "plastic",
+              "metal",
+              "glass",
+              "paper_cardboard",
+              "organic",
+              "composite",
+              "textile_rubber",
+              "e_waste",
+              "unknown"
+            ]
+          },
+          "material_detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "e.g. PET, aluminium, EPS_foam, tetra_pak"
+          },
+          "condition": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/condition"
+            }
+          },
+          "sorting_action": {
+            "enum": [
+              "recycle_plastic",
+              "recycle_metal",
+              "recycle_paper",
+              "recycle_glass",
+              "compost",
+              "landfill",
+              "hazardous_dropoff",
+              "needs_review"
+            ]
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "[x, y, w, h] in pixels of the processed image (COCO format)"
+          },
+          "bbox_norm": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "bbox divided by image width/height"
+          },
+          "segmentation": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "COCO polygon(s) in processed-image pixels"
+          },
+          "area": {
+            "type": "number"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "region": {
+                "enum": [
+                  "top-left",
+                  "top-center",
+                  "top-right",
+                  "middle-left",
+                  "center",
+                  "middle-right",
+                  "bottom-left",
+                  "bottom-center",
+                  "bottom-right"
+                ]
+              },
+              "size": {
+                "enum": [
+                  "small",
+                  "medium",
+                  "large"
+                ],
+                "description": "small < 1% of image area, medium < 10%, large >= 10%"
+              }
+            }
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "tiny",
+                "possibly_occluded"
+              ]
+            }
+          },
+          "caption": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verified object-level caption = latest approved/edited candidate (Week 3), e.g. 'crushed clear plastic bottle lying on grass'"
+          },
+          "instruction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Grounded sorting instruction, e.g. 'Pick up the crushed plastic bottle at the bottom-left and place it in the plastic recycling bin' (Week 3)"
+          },
+          "caption_candidates": {
+            "type": "array",
+            "description": "Object-level caption candidates (VLM + human), linked to this object's bbox/mask",
+            "items": {
+              "$ref": "#/$defs/caption"
+            }
+          }
+        }
+      }
+    },
+    "captions": {
+      "type": "array",
+      "description": "Image-level candidate captions from VLMs and humans",
+      "items": {
+        "$ref": "#/$defs/caption"
+      }
+    },
+    "review": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "unreviewed",
+            "in_progress",
+            "approved",
+            "rejected"
+          ]
+        },
+        "reviewer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "caption": {
+      "type": "object",
+      "required": [
+        "caption_id",
+        "text",
+        "model",
+        "status"
+      ],
+      "properties": {
+        "caption_id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model key from configs/captioning.yaml (blip2, qwen2.5-vl-7b, blip-base, smolvlm-256m, template) or human"
+        },
+        "prompt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clip_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "review_score": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 5
+        },
+        "hallucinated_objects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "approved",
+            "edited",
+            "rejected"
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "image",
+            "object"
+          ]
+        },
+        "hf_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Hugging Face model id (null for template / human)"
+        },
+        "prompt_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Key of the prompt template in configs/captioning.yaml"
+        },
+        "original_text": {
+          "type": "string",
+          "description": "Model output before a human edit"
+        },
+        "reviewer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proposed": {
+          "type": "object",
+          "description": "Structured fields proposed by the VLM for this object (to be verified in Week 3)",
+          "properties": {
+            "condition": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            },
+            "parsed_json": {
+              "type": "boolean",
+              "description": "True if the model followed the JSON output format"
+            }
+          }
+        },
+        "auto_checks": {
+          "type": "object",
+          "description": "Rule-based signals for reviewers (scripts/captionlib.py); not ground truth",
+          "properties": {
+            "n_words": {
+              "type": "integer"
+            },
+            "empty": {
+              "type": "boolean"
+            },
+            "mentioned_materials": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mentioned_categories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unsupported_categories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "brand_or_text": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "condition": {
+      "enum": [
+        "intact",
+        "crushed",
+        "dented",
+        "crumpled",
+        "torn",
+        "broken",
+        "open",
+        "soiled",
+        "wet",
+        "burnt",
+        "faded",
+        "partially_occluded",
+        "heavily_occluded"
+      ]
+    }
+  }
+}

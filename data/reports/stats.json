@@ -1,0 +1,83 @@
+{
+  "images": 2410,
+  "objects": 9391,
+  "images_per_split": {
+    "val": 355,
+    "train": 1712,
+    "test": 343
+  },
+  "images_per_source": {
+    "taco": 1493,
+    "zerowaste": 597,
+    "coco": 320
+  },
+  "objects_per_category": {
+    "carton_box": 2627,
+    "unspecified": 1234,
+    "other_litter": 1127,
+    "bag_wrapper": 870,
+    "bottle_jar": 828,
+    "cup": 812,
+    "cigarette": 660,
+    "cap_lid": 375,
+    "can": 273,
+    "straw_utensil": 198,
+    "paper": 153,
+    "glass_fragment": 138,
+    "container_packaging": 86,
+    "food_waste": 8,
+    "hazardous": 2
+  },
+  "objects_per_material": {
+    "plastic": 3384,
+    "paper_cardboard": 2767,
+    "unknown": 1346,
+    "composite": 824,
+    "metal": 592,
+    "glass": 432,
+    "textile_rubber": 36,
+    "organic": 8,
+    "e_waste": 2
+  },
+  "objects_per_sorting_action": {
+    "landfill": 3310,
+    "recycle_paper": 2765,
+    "needs_review": 1524,
+    "recycle_plastic": 1034,
+    "recycle_metal": 592,
+    "recycle_glass": 110,
+    "compost": 54,
+    "hazardous_dropoff": 2
+  },
+  "images_per_clutter_level": {
+    "single": 773,
+    "sparse": 721,
+    "moderate": 742,
+    "dense": 174
+  },
+  "images_per_environment": {
+    "indoor_manmade": 112,
+    "pavement_urban": 433,
+    "vegetation": 754,
+    "unknown": 415,
+    "sand_dirt_pebbles": 597,
+    "clean_background": 37,
+    "trash_pile": 5,
+    "water": 84,
+    "conveyor_belt": 597
+  },
+  "object_size_buckets": {
+    "large": 926,
+    "medium": 4371,
+    "small": 4094
+  },
+  "object_flags": {
+    "possibly_occluded": 2049,
+    "tiny": 1205
+  },
+  "image_quality_flags": {
+    "too_dark": 9
+  },
+  "mean_objects_per_image": 3.9,
+  "max_objects_per_image": 90
+}

@@ -1,0 +1,171 @@
+{
+  "n_images": 60,
+  "image_ids_file": "data/captions/pilot_ids.txt",
+  "image_level": {
+    "blip-base": {
+      "n": 60,
+      "mean_words": 7.0,
+      "empty_pct": 0.0,
+      "clip_score": 0.747,
+      "clip_score_by_source": {
+        "coco": 0.758,
+        "taco": 0.745,
+        "zerowaste": 0.74
+      },
+      "mentions_material_pct": 23.3,
+      "material_recall": 0.181,
+      "material_conflict_pct": 1.7,
+      "category_recall": 0.064,
+      "unsupported_category_pct": 6.7,
+      "mentions_condition_pct": 6.7,
+      "brand_or_text_pct": 0.0,
+      "people_animals_pct": 13.3,
+      "sec_per_caption": 0.35,
+      "top_unsupported": [
+        [
+          "bag_wrapper",
+          1
+        ],
+        [
+          "bottle_jar",
+          1
+        ],
+        [
+          "food_waste",
+          1
+        ],
+        [
+          "straw_utensil",
+          1
+        ]
+      ]
+    },
+    "smolvlm-256m": {
+      "n": 60,
+      "mean_words": 24.6,
+      "empty_pct": 0.0,
+      "clip_score": 0.745,
+      "clip_score_by_source": {
+        "coco": 0.74,
+        "taco": 0.737,
+        "zerowaste": 0.764
+      },
+      "mentions_material_pct": 45.0,
+      "material_recall": 0.355,
+      "material_conflict_pct": 1.7,
+      "category_recall": 0.215,
+      "unsupported_category_pct": 3.3,
+      "mentions_condition_pct": 6.7,
+      "brand_or_text_pct": 1.7,
+      "people_animals_pct": 2.2,
+      "sec_per_caption": 0.66,
+      "top_unsupported": [
+        [
+          "food_waste",
+          1
+        ],
+        [
+          "straw_utensil",
+          1
+        ]
+      ]
+    },
+    "template": {
+      "n": 60,
+      "mean_words": 12.8,
+      "empty_pct": 0.0,
+      "clip_score": 0.71,
+      "clip_score_by_source": {
+        "coco": 0.548,
+        "taco": 0.748,
+        "zerowaste": 0.794
+      },
+      "mentions_material_pct": 68.3,
+      "material_recall": 0.821,
+      "material_conflict_pct": 0.0,
+      "category_recall": 1.0,
+      "unsupported_category_pct": 0.0,
+      "mentions_condition_pct": 0.0,
+      "brand_or_text_pct": 0.0,
+      "people_animals_pct": 0.0,
+      "sec_per_caption": 0.0,
+      "top_unsupported": []
+    }
+  },
+  "object_level": {
+    "blip-base": {
+      "n": 175,
+      "mean_words": 6.5,
+      "empty_pct": 0.0,
+      "clip_score": 0.655,
+      "clip_score_by_source": {
+        "coco": 0.66,
+        "taco": 0.696,
+        "zerowaste": 0.625
+      },
+      "material_match_pct": 19.7,
+      "material_conflict_pct": 2.3,
+      "category_match_pct": 13.1,
+      "mentions_condition_pct": 0.6,
+      "json_ok_pct": null,
+      "brand_or_text_pct": 0.0,
+      "sec_per_caption": 0.29,
+      "proposed_conditions": {
+        "broken": 1
+      }
+    },
+    "smolvlm-256m": {
+      "n": 175,
+      "mean_words": 14.9,
+      "empty_pct": 0.0,
+      "clip_score": 0.674,
+      "clip_score_by_source": {
+        "coco": 0.662,
+        "taco": 0.708,
+        "zerowaste": 0.654
+      },
+      "material_match_pct": 95.8,
+      "material_conflict_pct": 0.0,
+      "category_match_pct": 98.5,
+      "mentions_condition_pct": 17.7,
+      "json_ok_pct": null,
+      "brand_or_text_pct": 3.4,
+      "sec_per_caption": 0.58,
+      "proposed_conditions": {
+        "intact": 23,
+        "torn": 5,
+        "soiled": 2,
+        "crumpled": 1
+      }
+    },
+    "template": {
+      "n": 175,
+      "mean_words": 9.4,
+      "empty_pct": 0.0,
+      "clip_score": 0.611,
+      "clip_score_by_source": {
+        "coco": 0.563,
+        "taco": 0.644,
+        "zerowaste": 0.603
+      },
+      "material_match_pct": 100.0,
+      "material_conflict_pct": 0.0,
+      "category_match_pct": 100.0,
+      "mentions_condition_pct": 0.0,
+      "json_ok_pct": null,
+      "brand_or_text_pct": 0.0,
+      "sec_per_caption": 0.0,
+      "proposed_conditions": {}
+    }
+  },
+  "clip_head_to_head": {
+    "image": {
+      "blip-base": 29,
+      "smolvlm-256m": 31
+    },
+    "object": {
+      "smolvlm-256m": 100,
+      "blip-base": 75
+    }
+  }
+}

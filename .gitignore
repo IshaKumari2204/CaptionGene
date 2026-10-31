@@ -1,0 +1,6 @@
+data/images/
+data/dropped/
+data/interim/
+data/raw/
+__pycache__/
+.DS_Store
