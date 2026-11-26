@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections import defaultdict
+from collections import Counter as Counter_, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -152,6 +152,8 @@ def object_label(obj: dict, source: str) -> str:
 
 def fill_prompt(template: str, rec: dict | None = None, obj: dict | None = None, taxonomy: dict | None = None) -> str:
     vals = {"conditions": ", ".join(taxonomy["conditions"]) if taxonomy else ""}
+    if rec is not None and obj is None:      # image level: the annotated counts, used by count-aware prompts
+        vals.update(n_items=len(rec["objects"]), item_listing=count_listing(rec, digits=True))
     if obj is not None:
         vals.update(label=object_label(obj, rec["source"]),
                     material=obj["material"].replace("_", " / " if obj["material"] == "paper_cardboard" else " "),
@@ -245,23 +247,178 @@ def template_object_caption(obj: dict, source: str) -> str:
     return f"{' '.join(words + [label])} in the {obj['location']['region'].replace('-', ' ')} of the image"
 
 
-def template_image_caption(rec: dict) -> str:
-    groups = defaultdict(int)
+def join_and(parts: list[str]) -> str:
+    return ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1] if parts else ""
+
+
+def label_groups(rec: dict) -> list[tuple[str, list[dict]]]:
+    """Objects grouped by their readable label, largest group first."""
+    groups = defaultdict(list)
     for o in rec["objects"]:
-        groups[object_label(o, rec["source"])] += 1
-    parts = []
-    for label, n in sorted(groups.items(), key=lambda kv: -kv[1])[:5]:
-        num = NUM_WORDS[n] if n < 10 else str(n)
-        parts.append(f"{num} {plural(label)}" if n > 1 else f"{'an' if label[0] in 'aeiou' else 'a'} {label}")
-    if len(groups) > 5:
+        groups[object_label(o, rec["source"])].append(o)
+    return sorted(groups.items(), key=lambda kv: -len(kv[1]))
+
+
+def count_phrase(label: str, n: int, digits: bool = False) -> str:
+    if n == 1:
+        return f"{'an' if label[0] in 'aeiou' else 'a'} {label}"
+    return f"{n if digits or n >= 10 else NUM_WORDS[n]} {plural(label)}"
+
+
+def count_listing(rec: dict, digits: bool = False, max_groups: int = 5) -> str:
+    groups = label_groups(rec)
+    parts = [count_phrase(label, len(objs), digits) for label, objs in groups[:max_groups]]
+    if len(groups) > max_groups:
         parts.append("other items")
+    return join_and(parts)
+
+
+def template_image_caption(rec: dict) -> str:
     env = [ENV_PHRASES[e] for e in rec["scene"]["environment"] if e in ENV_PHRASES]
     n = rec["scene"]["object_count"]
     noun = "waste item" if rec["scene"]["is_discarded"] == "yes" else "item"    # COCO objects may be in use
     head = f"{NUM_WORDS[n] if n < 10 else n} {noun}{'s' if n > 1 else ''}"
     where = f" {' and '.join(env[:2])}" if env else ""
-    listing = ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1]
-    return f"{head.capitalize()}{where}: {listing}."
+    return f"{head.capitalize()}{where}: {count_listing(rec)}."
+
+
+# ---------------------------------------------------------------------------
+# Detailed grounded captions (ZeroWaste): counts per material, position, colour, size,
+# coverage, overlap and sorting bin - every fact comes from the annotation or the object's pixels
+# ---------------------------------------------------------------------------
+SORT_PHRASES = {"recycle_paper": "paper recycling", "recycle_plastic": "plastic recycling",
+                "recycle_metal": "metal recycling", "recycle_glass": "glass recycling", "compost": "compost",
+                "landfill": "general waste", "hazardous_dropoff": "special collection",
+                "needs_review": "a bin decided on review"}
+REGION_WORDS = {"top-left": "in the top left", "top-center": "at the top", "top-right": "in the top right",
+                "middle-left": "on the left", "center": "in the centre", "middle-right": "on the right",
+                "bottom-left": "in the bottom left", "bottom-center": "at the bottom",
+                "bottom-right": "in the bottom right"}
+
+
+def colour_name(rgb_pixels) -> str | None:
+    """Name the median colour of a set of RGB pixels (coarse, 11 colour words)."""
+    import colorsys
+    import statistics
+    if len(rgb_pixels) < 20:
+        return None
+    r, g, b = (statistics.median(p[i] for p in rgb_pixels) / 255 for i in range(3))
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    h *= 360
+    if v < 0.22:
+        return "black"
+    if s < 0.18:
+        return "white" if v > 0.78 else "grey" if v > 0.4 else "dark grey"
+    if h < 15 or h >= 340:
+        return "red" if v > 0.45 else "brown"
+    if h < 45:
+        return "brown" if v < 0.75 or s < 0.45 else "orange"
+    if h < 70:
+        return "yellow" if s > 0.4 and v > 0.6 else "beige" if v > 0.6 else "brown"
+    if h < 170:
+        return "green"
+    if h < 260:
+        return "blue"
+    return "purple" if h < 300 else "pink"
+
+
+def object_colour(img: Image.Image, obj: dict) -> str | None:
+    """Median colour inside the object's segmentation polygon (bbox if there is none)."""
+    from PIL import ImageDraw
+    x, y, w, h = obj["bbox"]
+    x0, y0, x1, y1 = int(x), int(y), int(x + w) + 1, int(y + h) + 1
+    crop = img.crop((x0, y0, x1, y1)).convert("RGB")
+    mask = Image.new("L", crop.size, 0)
+    seg = obj.get("segmentation")
+    if isinstance(seg, list) and seg:
+        d = ImageDraw.Draw(mask)
+        for poly in seg:
+            if len(poly) >= 6:
+                d.polygon([(poly[i] - x0, poly[i + 1] - y0) for i in range(0, len(poly) - 1, 2)], fill=255)
+    else:
+        mask.paste(255, (0, 0) + crop.size)
+    step = max(1, int((crop.width * crop.height / 4000) ** 0.5))     # sample ~4k pixels
+    small = crop.resize((max(1, crop.width // step), max(1, crop.height // step)))
+    msmall = mask.resize(small.size)
+    px = [p for p, m in zip(small.getdata(), msmall.getdata()) if m > 127]
+    return colour_name(px)
+
+
+def where_phrase(objs: list[dict]) -> str:
+    regions = Counter_(REGION_WORDS[o["location"]["region"]] for o in objs)
+    if len(objs) == 1:
+        return next(iter(regions))
+    if len(regions) == 1:
+        return f"all {next(iter(regions))}"
+    if len(regions) >= 4 and len(objs) >= 4:
+        return "spread across the belt"
+    (top, k), = regions.most_common(1)
+    if k > len(objs) / 2:
+        return f"mostly {top}"
+    return join_and([r for r, _ in regions.most_common(3)])
+
+
+def _iou_small(a, b) -> float:
+    """Intersection over the smaller box (detects one item lying on another)."""
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    iw = max(0.0, min(ax + aw, bx + bw) - max(ax, bx))
+    ih = max(0.0, min(ay + ah, by + bh) - max(ay, by))
+    return iw * ih / max(1e-6, min(aw * ah, bw * bh))
+
+
+def detailed_image_caption(rec: dict, img: Image.Image | None = None) -> str:
+    """Multi-sentence grounded caption: counts, positions, largest item + colour, coverage, overlap, bins."""
+    objs = rec["objects"]
+    n = len(objs)
+    groups = label_groups(rec)
+    env = [ENV_PHRASES[e] for e in rec["scene"]["environment"] if e in ENV_PHRASES]
+    setting = "A recycling conveyor belt" if "conveyor_belt" in rec["scene"]["environment"] else "A scene"
+    if env and setting == "A scene":
+        setting = f"A scene {env[0]}"
+    big = max(objs, key=lambda o: o["area"])
+    colour = object_colour(img, big) if img is not None else None
+    desc = " ".join([big["location"]["size"]] + ([colour] if colour else []) + [object_label(big, rec["source"])])
+    where_big = REGION_WORDS[big["location"]["region"]]
+    if n == 1:
+        s = [f"{setting} with 1 waste item: a {desc} {where_big}."]
+    else:
+        s = [f"{setting} with {n} waste items: "
+             f"{join_and([count_phrase(l, len(g), digits=True) for l, g in groups])}."]
+        pos = join_and([f"the {plural(l) if len(g) > 1 else l} {'are' if len(g) > 1 else 'is'} {where_phrase(g)}"
+                        for l, g in groups])
+        s.append(pos[0].upper() + pos[1:] + ".")
+        s.append(f"The largest item is a {desc} {where_big}.")
+    cover = 100 * sum(o["area"] for o in objs) / (rec["width"] * rec["height"])
+    occluded = sum("possibly_occluded" in o["flags"] for o in objs)
+    overlap = any(_iou_small(a["bbox"], b["bbox"]) > 0.3 for i, a in enumerate(objs) for b in objs[i + 1:])
+    pct = f"{round(cover / 5) * 5}%" if cover >= 2.5 else "less than 5%"
+    density = (f"The items cover about {pct} of the belt" if n > 1 else f"It covers {pct} of the belt")
+    if occluded:
+        density += f" and {occluded} {'is' if occluded == 1 else 'are'} partly hidden under other items"
+    elif overlap:
+        density += " and some of them overlap"
+    s.append(density + ".")
+    conds = Counter_(c for o in objs for c in o["condition"] if c != "intact")
+    if conds:
+        s.append("Visible condition: " + join_and([f"{k} {c.replace('_', ' ')}" for c, k in conds.most_common(3)]) + ".")
+    bins = Counter_(o["sorting_action"] for o in objs)
+    if bins:
+        s.append("For sorting, " + join_and([f"{k} {'goes' if k == 1 else 'go'} to {SORT_PHRASES.get(b, b)}"
+                                             for b, k in bins.most_common()]) + ".")
+    return " ".join(s)
+
+
+def detailed_object_caption(obj: dict, source: str, img: Image.Image | None = None) -> str:
+    colour = object_colour(img, obj) if img is not None else None
+    words = [obj["location"]["size"]] + ([colour] if colour else []) + \
+            [c.replace("_", " ") for c in obj["condition"] if c != "intact"]
+    label = object_label(obj, source)
+    head = f"{' '.join(words)} {label}"
+    tail = f" {REGION_WORDS[obj['location']['region']]} of the belt"
+    if "possibly_occluded" in obj["flags"]:
+        tail += ", partly hidden"
+    return f"{head[0].upper()}{head[1:]}{tail}; it goes to {SORT_PHRASES.get(obj['sorting_action'], obj['sorting_action'])}."
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +449,156 @@ def image_checks(text: str, rec: dict) -> dict:
         "mentions_condition": bool(extract_conditions(text)),
         "brand_or_text": has_brand_or_text(text),
         "mentions_people_animals": any(_has(_normalise(text), w) for w in LIVING_WORDS),
+        **quality_checks(text, rec),
     }
+
+
+# ---------------------------------------------------------------------------
+# Caption quality parameters (count accuracy, hallucination, repetition, detail) + 0-100 score
+# ---------------------------------------------------------------------------
+NUMBER_WORDS = {w: i for i, w in enumerate(NUM_WORDS)} | {
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "single": 1, "couple": 2, "pair": 2}
+ITEM_NOUNS = {"item", "items", "object", "objects", "things", "pieces", "piece", "waste", "objects"}
+VAGUE_QUANTITY = ["several", "many", "various", "a few", "a pile", "a lot", "lots of", "multiple", "some",
+                  "a bunch", "a heap", "numerous", "a variety", "assorted"]
+NOT_COUNTABLE_AFTER_A = {"pile", "lot", "lots", "bunch", "heap", "variety", "mix", "number", "few", "couple",
+                         "stack", "collection", "group", "range", "recycling", "conveyor", "belt", "scene",
+                         "close", "photo", "picture", "cluttered", "messy"}
+# objects that never appear in the waste labels: a mention is a likely hallucination
+NON_WASTE_OBJECTS = ["keyboard", "mouse", "book", "computer", "laptop", "phone", "chair", "car", "house",
+                     "tree", "flower", "toy", "shoe", "bed", "window", "door", "television", "clock", "lamp"]
+# setting words that contradict a conveyor-belt scene
+WRONG_SETTING = {"conveyor_belt": ["table", "floor", "street", "parking", "beach", "grass", "jungle", "room",
+                                   "kitchen", "road", "garden", "forest", "sidewalk", "neighborhood", "desk"]}
+SETTING_WORDS = {"conveyor_belt": ["conveyor", "belt", "recycling facility", "sorting line", "recycling plant"]}
+LOCATION_WORDS = ["left", "right", "top", "bottom", "centre", "center", "middle", "corner", "foreground",
+                  "background", "edge", "upper", "lower"]
+COLOUR_WORDS = ["black", "white", "grey", "gray", "brown", "red", "orange", "yellow", "beige", "green",
+                "blue", "purple", "pink", "transparent", "clear", "silver", "golden", "dark", "light"]
+
+
+def _num(tok: str) -> int | None:
+    return int(tok) if tok.isdigit() else NUMBER_WORDS.get(tok)
+
+
+def _material_of(window: list[str]) -> str | None:
+    t = " ".join(window)
+    found = mentions(t, MATERIAL_WORDS)
+    return found[0] if found else None
+
+
+def stated_counts(text: str) -> tuple[int | None, dict[str, int]]:
+    """Counts written in a caption -> (total item count, {material: count}).
+
+    "9 waste items: 7 pieces of cardboard and two rigid plastic items" -> (9, {paper_cardboard: 7, plastic: 2})
+    A material's count is summed inside the first sentence that gives it ("3 pieces of soft plastic film and
+    a rigid plastic item" -> plastic 4); later sentences repeating it ("7 go to paper recycling") are ignored.
+    """
+    total, mats, mat_sentence = None, defaultdict(int), {}
+    for si, sent in enumerate(re.split(r"(?<=[.!?;])\s+", _normalise(text))):
+        toks = re.findall(r"\d+|[a-z]+|[,:;]", sent)
+        for i, tok in enumerate(toks):
+            n = 1 if tok in ("a", "an", "one") else _num(tok)
+            if n is None:
+                continue
+            window = []
+            for w in toks[i + 1:i + 8]:
+                if w in (",", ":", ";", "and", "with", "go", "goes", "is", "are") or _num(w) is not None:
+                    break
+                window.append(w)
+            if not window or (tok in ("a", "an") and set(window[:3]) & NOT_COUNTABLE_AFTER_A):
+                continue
+            mat = _material_of(window)
+            if mat:
+                if mat_sentence.setdefault(mat, si) == si:
+                    mats[mat] += n
+            elif total is None and tok not in ("a", "an") and set(window) & ITEM_NOUNS:
+                total = n
+    return total, dict(mats)
+
+
+def repetition_ratio(text: str) -> float:
+    """Share of word 4-grams that are repeats (0 = none; "a plastic cover, a plastic cover, ..." -> high)."""
+    w = re.findall(r"[a-z0-9]+", text.lower())
+    grams = [tuple(w[i:i + 4]) for i in range(len(w) - 3)]
+    return round(1 - len(set(grams)) / len(grams), 3) if grams else 0.0
+
+
+def quality_checks(text: str, rec: dict) -> dict:
+    t = _normalise(text)
+    gt_total = len(rec["objects"])
+    gt_mats = Counter_(o["material"] for o in rec["objects"] if o["material"] not in ("unknown", "composite"))
+    total, mats = stated_counts(text)
+    implied = sum(mats.values()) if mats and set(mats) >= set(gt_mats) else None
+    total_used = total if total is not None else implied
+    mat_correct = sum(mats.get(m) == k for m, k in gt_mats.items())
+    env = rec["scene"]["environment"]
+    wrong_setting = sorted({w for e in env for w in WRONG_SETTING.get(e, []) if _has(t, w)})
+    non_waste = sorted(w for w in NON_WASTE_OBJECTS if _has(t, w))
+    living = rec["source"] != "coco" and any(_has(t, w) for w in LIVING_WORDS)
+    rep = repetition_ratio(text)
+    details = {
+        "count": total is not None or bool(mats),
+        "material": bool(mentions(text, MATERIAL_WORDS)),
+        "location": any(_has(t, w) for w in LOCATION_WORDS),
+        "colour": any(_has(t, w) for w in COLOUR_WORDS),
+        "condition": bool(extract_conditions(text)),
+        "setting": any(_has(t, w) for e in env for w in SETTING_WORDS.get(e, [])) or (
+            not any(e in SETTING_WORDS for e in env) and any(_has(t, w) for w in ENV_WORDS)),
+    }
+    return {
+        "stated_total": total,
+        "gt_total": gt_total,
+        "count_correct": None if total_used is None else total_used == gt_total,
+        "count_error": None if total_used is None else abs(total_used - gt_total),
+        "stated_material_counts": mats,
+        "material_count_accuracy": round(mat_correct / len(gt_mats), 3) if gt_mats else None,
+        "vague_quantity": any(_has(t, w) for w in VAGUE_QUANTITY) and total_used is None,
+        "non_waste_objects": non_waste,
+        "wrong_setting": wrong_setting,
+        "repetition": rep,
+        "repetitive": rep > 0.15,
+        "details": sorted(k for k, v in details.items() if v),
+        "detail_score": round(sum(details.values()) / len(details), 3),
+    }
+
+
+ENV_WORDS = ["sand", "beach", "grass", "street", "pavement", "road", "water", "table", "floor", "ground",
+             "indoors", "room", "pile", "background", "soil", "dirt", "plants", "bushes"]
+DEFAULT_QUALITY_WEIGHTS = {"count": 25, "material": 20, "no_hallucination": 20, "detail": 15, "clip": 10,
+                           "fluency": 10}
+
+
+def is_hallucinating(a: dict) -> bool:
+    return bool(a.get("unsupported_categories") or a.get("mentions_people_animals") or a.get("non_waste_objects")
+                or a.get("material_conflict") or a.get("wrong_setting"))
+
+
+def quality_score(a: dict, clip: float | None, weights: dict | None = None) -> dict:
+    """Combine the checks into a 0-100 caption quality score (weights in captioning.yaml -> quality_score).
+
+    count            50% total count correct + 50% per-material counts correct (0 if no count is given)
+    material         share of the annotated materials that the caption names
+    no_hallucination 1 if no people/animals, non-waste objects, unsupported categories, wrong setting or
+                     material conflict; 0 otherwise
+    detail           share of {count, material, location, colour, condition, setting} mentioned
+    clip             CLIPScore mapped from [0.5, 0.9] to [0, 1]
+    fluency          1 - 3 x repeated-4-gram ratio (empty caption -> 0)
+    """
+    w = weights or DEFAULT_QUALITY_WEIGHTS
+    if a.get("empty"):
+        return {"quality_score": 0.0, "quality_parts": {k: 0.0 for k in w}}
+    parts = {
+        "count": 0.5 * bool(a.get("count_correct")) + 0.5 * (a.get("material_count_accuracy") or 0.0),
+        "material": a.get("material_recall") if a.get("material_recall") is not None else 1.0,
+        "no_hallucination": 0.0 if is_hallucinating(a) else 1.0,
+        "detail": a.get("detail_score", 0.0),
+        "clip": min(1.0, max(0.0, ((clip or 0.0) - 0.5) / 0.4)),
+        "fluency": max(0.0, 1 - 3 * a.get("repetition", 0.0)),
+    }
+    score = sum(w[k] * parts[k] for k in w) / sum(w.values()) * 100
+    return {"quality_score": round(score, 1), "quality_parts": {k: round(v, 3) for k, v in parts.items()}}
 
 
 def object_checks(text: str, obj: dict) -> dict:
@@ -367,11 +673,13 @@ def merge_records(records: list[dict], generations: list[dict], events: list[dic
                     c[k] = review[k]
         return c
 
+    weights = load_caption_cfg().get("quality_score", {}).get("weights")
     for rec in records:
         caps = [build(g, cap_events.get(g["caption_id"])) for g in by_img.get(rec["image_id"], [])]
         caps += [build({**e, "model": "human"}, e) for e in human_new.get(rec["image_id"], [])]
         for c in caps:
             c["auto_checks"] = image_checks(c["text"], rec)
+            c["auto_checks"].update(quality_score(c["auto_checks"], c["clip_score"], weights))
         rec["captions"] = caps
         for o in rec["objects"]:
             if o["object_id"] in obj_events:

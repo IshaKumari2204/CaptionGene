@@ -45,7 +45,7 @@ for r in recs:
 for s in RATIOS:
     write_jsonl(PROCESSED / f"{s}.jsonl", by_split[s])
 
-with open(PROCESSED / "objects.csv", "w", newline="") as f:
+with open(PROCESSED / "objects.csv", "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f)
     w.writerow(["image_id", "split", "source", "file_name", "object_id", "source_category",
                 "category", "material", "material_detail", "sorting_action", "x", "y", "w", "h",

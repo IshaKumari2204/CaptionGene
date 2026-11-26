@@ -387,7 +387,7 @@
         },
         "model": {
           "type": "string",
-          "description": "Model key from configs/captioning.yaml (blip2, qwen2.5-vl-7b, blip-base, smolvlm-256m, template) or human"
+          "description": "Model key from configs/captioning.yaml (blip2, qwen2.5-vl-7b, blip-base, smolvlm-256m, template, zw-detailed) or human"
         },
         "prompt": {
           "type": [
@@ -508,6 +508,32 @@
             },
             "brand_or_text": {
               "type": "boolean"
+            },
+            "stated_total": {
+              "type": ["integer", "null"],
+              "description": "Total item count written in the caption (image level)"
+            },
+            "count_correct": {
+              "type": ["boolean", "null"],
+              "description": "Stated (or implied) total count equals the annotated count; null if no count is given"
+            },
+            "material_count_accuracy": {
+              "type": ["number", "null"],
+              "description": "Share of annotated materials whose count is stated correctly"
+            },
+            "repetition": {
+              "type": "number",
+              "description": "Share of repeated word 4-grams (repetition loops)"
+            },
+            "detail_score": {
+              "type": "number",
+              "description": "Share of {count, material, location, colour, condition, setting} mentioned"
+            },
+            "quality_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Weighted caption quality score (configs/captioning.yaml -> quality_score)"
             }
           }
         }
