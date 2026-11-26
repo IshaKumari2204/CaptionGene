@@ -94,6 +94,20 @@ def best_clip(rec):
     return max(s) if s else None
 
 
+def best_quality(rec):
+    s = [c["auto_checks"].get("quality_score") for c in rec["captions"]]
+    s = [x for x in s if x is not None]
+    return max(s) if s else None
+
+
+def image_prompt_id(mcfg, rec):
+    """Per-source prompt (e.g. the count-aware ZeroWaste prompt) if the model defines one."""
+    return mcfg["prompts"].get(f"image_{rec['source']}", mcfg["prompts"]["image"])
+
+
+RULE_BACKENDS = ("template", "detailed")
+
+
 def generate_into_store(model, rec, obj, prompt_id, prompt, n):
     """Run a VLM on one image / object, append candidates to data/captions/<model>.jsonl, score with CLIP."""
     mcfg = CFG["models"][model]
@@ -147,6 +161,7 @@ with st.sidebar.expander("Filters", expanded=True):
     flag_unsupported = st.checkbox("Auto-check: unsupported object mentioned")
     flag_brand = st.checkbox("Auto-check: brand / label text")
     min_clip = st.slider("Min best CLIPScore", 0.0, 1.2, 0.0, 0.05)
+    min_quality = st.slider("Min best caption quality (0-100)", 0, 100, 0, 5)
 
 
 def keep(r):
@@ -165,6 +180,8 @@ def keep(r):
     if flag_brand and not any(c["auto_checks"]["brand_or_text"] for c in r["captions"]):
         return False
     if min_clip > 0 and (best_clip(r) or 0) < min_clip:
+        return False
+    if min_quality > 0 and (best_quality(r) or 0) < min_quality:
         return False
     return True
 
@@ -194,7 +211,23 @@ tab_review, tab_objects, tab_generate, tab_stats, tab_export = st.tabs(
 def caption_card(c, rec, obj=None, key_prefix=""):
     """One candidate: text, scores, auto-checks, and approve / edit / reject controls."""
     a = c["auto_checks"]
-    badges = [f"CLIP **{c['clip_score']:.2f}**" if c["clip_score"] is not None else "CLIP –"]
+    badges = []
+    if a.get("quality_score") is not None:
+        q = a["quality_score"]
+        badges.append(f"{'🟢' if q >= 75 else '🟡' if q >= 50 else '🔴'} quality **{q:.0f}/100**")
+    badges.append(f"CLIP **{c['clip_score']:.2f}**" if c["clip_score"] is not None else "CLIP –")
+    if "gt_total" in a:
+        if a.get("count_correct") is None:
+            badges.append(f"count: not stated (actual {a['gt_total']})" + (" · vague" if a.get("vague_quantity") else ""))
+        else:
+            stated = a["stated_total"] if a["stated_total"] is not None else sum(a["stated_material_counts"].values())
+            badges.append(f"count {stated}/{a['gt_total']} {'✓' if a['count_correct'] else '✗'}")
+    if a.get("repetitive"):
+        badges.append("⚠️ repetition")
+    if a.get("wrong_setting"):
+        badges.append("⚠️ wrong setting: " + ", ".join(a["wrong_setting"]))
+    if a.get("non_waste_objects"):
+        badges.append("⚠️ non-waste: " + ", ".join(a["non_waste_objects"]))
     if a.get("mentioned_materials"):
         badges.append("materials: " + ", ".join(a["mentioned_materials"]))
     if a.get("unsupported_categories"):
@@ -209,6 +242,15 @@ def caption_card(c, rec, obj=None, key_prefix=""):
         badges.append("proposed condition: " + ", ".join(c["proposed"]["condition"]))
     st.markdown(f"{STATUS_ICON[c['status']]} {c['text'] or '*(empty)*'}")
     st.caption(" · ".join(badges) + (f" · score {c['review_score']}/5" if c["review_score"] else ""))
+    if a.get("quality_parts"):
+        with st.expander("Quality breakdown", expanded=False):
+            w = CFG.get("quality_score", {}).get("weights", {})
+            st.dataframe(pd.DataFrame({"part": list(a["quality_parts"]),
+                                       "score (0-1)": list(a["quality_parts"].values()),
+                                       "weight": [w.get(k) for k in a["quality_parts"]]}), hide_index=True)
+            st.caption(f"stated material counts: {a.get('stated_material_counts') or '–'} · "
+                       f"material count accuracy: {a.get('material_count_accuracy')} · "
+                       f"details: {', '.join(a.get('details', [])) or '–'} · repetition {a.get('repetition')}")
     with st.expander("Review", expanded=False):
         k = key_prefix + c["caption_id"]
         text = st.text_area("Caption", c["text"], key=f"t_{k}", height=80)
@@ -249,11 +291,11 @@ def new_caption_form(rec, obj=None):
 
 
 def regenerate_button(model, rec, obj=None, key=""):
-    if model in ("template", "human") or model not in CFG["models"]:
+    if model == "human" or model not in CFG["models"] or CFG["models"][model]["backend"] in RULE_BACKENDS:
         return
     mcfg = CFG["models"][model]
     if st.button(f"🔁 Regenerate ({model})", key=f"regen_{key}{model}"):
-        pid = mcfg["prompts"]["object" if obj else "image"]
+        pid = mcfg["prompts"]["object"] if obj else image_prompt_id(mcfg, rec)
         prompt = fill_prompt(CFG["prompts"][pid], rec, obj, TAX)
         with st.spinner(f"Running {model} ..."):
             generate_into_store(model, rec, obj, pid, prompt, n=2)
@@ -296,7 +338,10 @@ with tab_review:
     present = sorted({c["model"] for c in rec["captions"]})
     default_pair = [m for m in CFG["compare_pair"] if m in present] or \
                    [m for m in CFG["pilot_compare_pair"] if m in present] or present[:2]
-    pair = st.multiselect("Models side by side", sorted(set(present) | set(CFG["models"])), default=default_pair[:2],
+    default_pair = default_pair[:2]
+    if "zw-detailed" in present:            # ZeroWaste: show the detailed caption next to the VLMs
+        default_pair = ["zw-detailed"] + [m for m in default_pair if m != "zw-detailed"]
+    pair = st.multiselect("Models side by side", sorted(set(present) | set(CFG["models"])), default=default_pair[:3],
                           max_selections=3)
     cols = st.columns(max(1, len(pair)))
     for col, m in zip(cols, pair):
@@ -366,7 +411,7 @@ with tab_objects:
 
 # ---- tab 3: generate with any model + custom prompt
 with tab_generate:
-    neural = [m for m, c in CFG["models"].items() if c["backend"] != "template"]
+    neural = [m for m, c in CFG["models"].items() if c["backend"] not in RULE_BACKENDS]
     g1, g2, g3 = st.columns([2, 1, 1])
     model = g1.selectbox("Captioning model", neural, format_func=lambda m: f"{m} - {CFG['models'][m]['label']}",
                          index=neural.index("smolvlm-256m") if "smolvlm-256m" in neural else 0)
@@ -377,10 +422,12 @@ with tab_generate:
         oid = st.selectbox("Object", [o["object_id"] for o in rec["objects"]], key="gen_obj")
         obj = next(o for o in rec["objects"] if o["object_id"] == oid)
     mcfg = CFG["models"][model]
-    pid = st.selectbox("Prompt template", list(CFG["prompts"]), index=list(CFG["prompts"]).index(mcfg["prompts"][level]))
-    st.caption("Placeholders {label}, {material}, {region}, {conditions} are filled from the object's annotation.")
+    default_pid = mcfg["prompts"]["object"] if level == "object" else image_prompt_id(mcfg, rec)
+    pid = st.selectbox("Prompt template", list(CFG["prompts"]), index=list(CFG["prompts"]).index(default_pid))
+    st.caption("Placeholders are filled from the annotation: {label}, {material}, {region}, {conditions} (object) · "
+               "{n_items}, {item_listing} (image, count-aware prompts).")
     tmpl = st.text_area("Prompt", CFG["prompts"][pid].strip(), height=130, key=f"tmpl_{pid}")
-    prompt = fill_prompt(tmpl, rec, obj, TAX) if obj else tmpl.strip()
+    prompt = fill_prompt(tmpl, rec, obj, TAX)
     with st.expander("Prompt sent to the model"):
         st.code(prompt or "(empty prompt: unconditional caption)")
     if mcfg["hf_id"] and mcfg.get("dtype") in ("float16", "bfloat16") and not __import__("torch").cuda.is_available():
@@ -422,6 +469,33 @@ with tab_stats:
                            for r, o, c in allcaps if c["clip_score"] is not None])
         if len(df):
             st.dataframe(df.pivot_table(index="model", columns="level", values="clip", aggfunc="mean").round(3))
+    st.markdown("**Image-caption quality per model** (higher is better; count / material / hallucination checks "
+                "compare the caption with the annotation, see `scripts/12_caption_quality_report.py`)")
+    q_src = st.selectbox("Source", ["zerowaste", "taco", "coco", "all"], key="q_src")
+    qrows = []
+    for r in recs:
+        if q_src != "all" and r["source"] != q_src:
+            continue
+        for c in r["captions"]:
+            a = c["auto_checks"]
+            qrows.append({"model": c["model"], "quality (0-100)": a.get("quality_score"),
+                          "count correct %": 100 * bool(a.get("count_correct")),
+                          "count stated %": 100 * (a.get("count_correct") is not None),
+                          "material count acc.": a.get("material_count_accuracy"),
+                          "material recall": a.get("material_recall"),
+                          "hallucination %": 100 * bool(a.get("unsupported_categories") or a.get("non_waste_objects")
+                                                         or a.get("wrong_setting") or a.get("material_conflict")
+                                                         or (a.get("mentions_people_animals") and r["source"] != "coco")),
+                          "repetitive %": 100 * bool(a.get("repetitive")),
+                          "detail score": a.get("detail_score"), "CLIPScore": c["clip_score"],
+                          "words": a.get("n_words")})
+    if qrows:
+        raw = pd.DataFrame(qrows).set_index("model").apply(pd.to_numeric, errors="coerce")
+        qdf = raw.groupby(level=0).mean().round(2)
+        qdf.insert(0, "captions", raw.groupby(level=0).size())
+        st.dataframe(qdf.sort_values("quality (0-100)", ascending=False), use_container_width=True)
+    else:
+        st.caption("No captions for this source yet.")
 
 # ---- tab 5: export approved annotations
 with tab_export:

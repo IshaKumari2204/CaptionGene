@@ -26,11 +26,13 @@ write_jsonl(PROCESSED / "manifest_all.jsonl", records)
 for split in ("train", "val", "test"):
     write_jsonl(PROCESSED / f"{split}.jsonl", [r for r in records if r["split"] == split])
 
-with open(PROCESSED / "captions.csv", "w", newline="") as f:
+with open(PROCESSED / "captions.csv", "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f)
     w.writerow(["caption_id", "image_id", "object_id", "level", "split", "source", "model", "prompt_id",
                 "text", "clip_score", "status", "review_score", "category", "material", "proposed_condition",
-                "mentions_material", "material_match", "unsupported_categories", "brand_or_text"])
+                "mentions_material", "material_match", "unsupported_categories", "brand_or_text",
+                "quality_score", "count_correct", "stated_total", "gt_total", "material_count_accuracy",
+                "repetition", "detail_score"])
     for r in records:
         rows = [(c, None) for c in r["captions"]]
         rows += [(c, o) for o in r["objects"] for c in o["caption_candidates"]]
@@ -41,7 +43,10 @@ with open(PROCESSED / "captions.csv", "w", newline="") as f:
                         c["status"], c["review_score"], o["category"] if o else "", o["material"] if o else "",
                         "|".join(c.get("proposed", {}).get("condition", [])),
                         a.get("mentions_material", bool(a["mentioned_materials"])), a.get("material_match", ""),
-                        "|".join(a.get("unsupported_categories", [])), a["brand_or_text"]])
+                        "|".join(a.get("unsupported_categories", [])), a["brand_or_text"],
+                        a.get("quality_score", ""), a.get("count_correct", ""), a.get("stated_total", ""),
+                        a.get("gt_total", ""), a.get("material_count_accuracy", ""), a.get("repetition", ""),
+                        a.get("detail_score", "")])
 
 n_img = sum(len(r["captions"]) for r in records)
 n_obj = sum(len(o["caption_candidates"]) for r in records for o in r["objects"])

@@ -26,7 +26,7 @@ models:
     backend: chat
     dtype: bfloat16
     max_pixels: 802816          # 1024*28*28 -> caps visual tokens per image
-    prompts: {image: chat_image, object: chat_object_json}
+    prompts: {image: chat_image, image_zerowaste: chat_image_zw, object: chat_object_json}
   qwen2.5-vl-3b:
     hf_id: Qwen/Qwen2.5-VL-3B-Instruct
     label: Qwen2.5-VL-3B-Instruct
@@ -34,14 +34,14 @@ models:
     backend: chat
     dtype: bfloat16
     max_pixels: 802816
-    prompts: {image: chat_image, object: chat_object_json}
+    prompts: {image: chat_image, image_zerowaste: chat_image_zw, object: chat_object_json}
   llava-1.5-7b:
     hf_id: llava-hf/llava-1.5-7b-hf
     label: LLaVA-1.5-7B
     family: instruct
     backend: chat
     dtype: float16
-    prompts: {image: chat_image, object: chat_object_json}
+    prompts: {image: chat_image, image_zerowaste: chat_image_zw, object: chat_object_json}
 
   # ---- small stand-ins used for the local pilot (run on an 8 GB Apple M1) ----
   blip-base:
@@ -58,13 +58,22 @@ models:
     backend: chat
     dtype: float32
     image_longest_edge: 512     # SmolVLM default splits big images into many tiles
-    prompts: {image: chat_image_short, object: chat_object}   # too small to follow the JSON prompt
+    prompts: {image: chat_image_short, image_zerowaste: chat_image_zw_short, object: chat_object}   # too small to follow the JSON prompt
 
   # ---- rule-based baseline: composes a caption from the structured labels only ----
   template:
     label: Label template (no VLM)
     family: template
     backend: template
+
+  # ---- Week 2 feedback: detailed grounded captions for ZeroWaste (no VLM, no hallucination possible) ----
+  # counts per material, position on the belt, largest item + its colour (median pixel colour inside the
+  # segmentation mask), belt coverage, occlusion and the sorting bin
+  zw-detailed:
+    label: Detailed grounded caption (labels + mask colour)
+    family: template
+    backend: detailed
+    sources: [zerowaste]
 
 # Default pair shown side by side in the curation app / used for the report's head-to-head
 # (first two models present; the 3B Qwen is the fallback for a 16 GB Colab T4)
@@ -105,6 +114,23 @@ prompts:
     {{"caption": "<short phrase: condition, colour, material, object>",
     "condition": [<zero or more of: {conditions}>]}}
 
+  # Count-aware prompts (Week 2 feedback: captions must say how many waste items there are).
+  # {n_items} and {item_listing} are filled from the annotation, so the model does not have to count -
+  # VLMs are bad at counting cluttered piles - and only adds what it can see (colour, condition, layout).
+  # Used automatically for ZeroWaste images by models that list an `image_zerowaste` prompt.
+  chat_image_zw: >-
+    This photo is from a recycling-facility conveyor belt.
+    The annotation says it contains exactly {n_items} waste items: {item_listing}.
+    Describe the image in two sentences for a waste-sorting dataset.
+    Start with the number of items and how many of each material, using these exact counts.
+    Then say where they lie on the belt (left, right, top, bottom, centre), their colours,
+    and their condition (crushed, folded, torn, dirty) when it is clearly visible.
+    Only mention waste items on the belt. Do not mention people, animals, furniture or brand names.
+
+  chat_image_zw_short: >-
+    This conveyor belt has {n_items} waste items: {item_listing}.
+    In one sentence, say how many items there are of each kind, and their colours.
+
 generation:
   max_new_tokens_image: 60
   max_new_tokens_object: 60
@@ -119,6 +145,16 @@ object_crop:
   min_side: 32              # crops smaller than this are upscaled before captioning
   skip_flags: [tiny]        # objects with these flags get no object caption (guidelines rule 7)
   max_objects_per_image: 8  # largest objects first; keeps dense ZeroWaste frames tractable
+
+# Caption quality score (0-100) = weighted mean of these parts (see captionlib.quality_score)
+quality_score:
+  weights:
+    count: 25              # total + per-material counts stated and correct
+    material: 20           # share of annotated materials named
+    no_hallucination: 20   # no people/animals, non-waste objects, wrong setting, unsupported category
+    detail: 15             # mentions count, material, location, colour, condition, setting
+    clip: 10               # CLIPScore image-text alignment
+    fluency: 10            # no repetition loops
 
 pilot:
   images_per_source: {taco: 30, zerowaste: 15, coco: 15}

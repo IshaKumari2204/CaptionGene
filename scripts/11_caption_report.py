@@ -170,7 +170,7 @@ for r in examples:
     for c in sorted(big["caption_candidates"], key=lambda c: models.index(c["model"])):
         L.append(f"  - *{c['model']}*: {c['text']}")
     L.append("")
-(REPORTS / "captions_week2.md").write_text("\n".join(L))
+(REPORTS / "captions_week2.md").write_text("\n".join(L), encoding="utf-8")
 
 # ---------------- example sheet ----------------
 W, IMG_H, TXT_H = 520, 340, 230
@@ -196,4 +196,4 @@ for i, r in enumerate(examples[:6]):
             ty += 17
         ty += 4
 sheet.save(REPORTS / "caption_examples.jpg", quality=88)
-print((REPORTS / "captions_week2.md").read_text()[:3000])
+print((REPORTS / "captions_week2.md").read_text(encoding="utf-8")[:3000])

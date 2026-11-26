@@ -1,0 +1,159 @@
+{
+  "source": "zerowaste",
+  "n_images": 597,
+  "weights": {
+    "count": 25,
+    "material": 20,
+    "no_hallucination": 20,
+    "detail": 15,
+    "clip": 10,
+    "fluency": 10
+  },
+  "all_images": {
+    "zw-detailed": {
+      "n": 597,
+      "quality": 93.2,
+      "count_stated_pct": 100.0,
+      "count_correct_pct": 100.0,
+      "count_error": 0,
+      "material_count_acc": 1.0,
+      "material_recall": 1.0,
+      "hallucination_pct": 0.0,
+      "repetitive_pct": 0.0,
+      "detail_score": 0.83,
+      "clip": 0.766,
+      "words": 82.0
+    },
+    "blip-base": {
+      "n": 15,
+      "quality": 37.3,
+      "count_stated_pct": 6.7,
+      "count_correct_pct": 0.0,
+      "count_error": 2,
+      "material_count_acc": 0.0,
+      "material_recall": 0.32,
+      "hallucination_pct": 33.3,
+      "repetitive_pct": 0.0,
+      "detail_score": 0.1,
+      "clip": 0.74,
+      "words": 7.3
+    },
+    "smolvlm-256m": {
+      "n": 15,
+      "quality": 41.7,
+      "count_stated_pct": 13.3,
+      "count_correct_pct": 0.0,
+      "count_error": 5.5,
+      "material_count_acc": 0.0,
+      "material_recall": 0.62,
+      "hallucination_pct": 53.3,
+      "repetitive_pct": 20.0,
+      "detail_score": 0.36,
+      "clip": 0.764,
+      "words": 30.2
+    },
+    "smolvlm-256m [chat_image_zw_short]": {
+      "n": 15,
+      "quality": 56.6,
+      "count_stated_pct": 66.7,
+      "count_correct_pct": 26.7,
+      "count_error": 2.8,
+      "material_count_acc": 0.4,
+      "material_recall": 0.67,
+      "hallucination_pct": 0.0,
+      "repetitive_pct": 6.7,
+      "detail_score": 0.22,
+      "clip": 0.608,
+      "words": 8.3
+    },
+    "template": {
+      "n": 15,
+      "quality": 89.8,
+      "count_stated_pct": 100.0,
+      "count_correct_pct": 100.0,
+      "count_error": 0,
+      "material_count_acc": 1.0,
+      "material_recall": 1.0,
+      "hallucination_pct": 0.0,
+      "repetitive_pct": 0.0,
+      "detail_score": 0.5,
+      "clip": 0.794,
+      "words": 18.4
+    }
+  },
+  "common_images": {
+    "n": 15,
+    "models": {
+      "zw-detailed": {
+        "n": 15,
+        "quality": 93.3,
+        "count_stated_pct": 100.0,
+        "count_correct_pct": 100.0,
+        "count_error": 0,
+        "material_count_acc": 1.0,
+        "material_recall": 1.0,
+        "hallucination_pct": 0.0,
+        "repetitive_pct": 0.0,
+        "detail_score": 0.83,
+        "clip": 0.765,
+        "words": 84.3
+      },
+      "blip-base": {
+        "n": 15,
+        "quality": 37.3,
+        "count_stated_pct": 6.7,
+        "count_correct_pct": 0.0,
+        "count_error": 2,
+        "material_count_acc": 0.0,
+        "material_recall": 0.32,
+        "hallucination_pct": 33.3,
+        "repetitive_pct": 0.0,
+        "detail_score": 0.1,
+        "clip": 0.74,
+        "words": 7.3
+      },
+      "smolvlm-256m": {
+        "n": 15,
+        "quality": 41.7,
+        "count_stated_pct": 13.3,
+        "count_correct_pct": 0.0,
+        "count_error": 5.5,
+        "material_count_acc": 0.0,
+        "material_recall": 0.62,
+        "hallucination_pct": 53.3,
+        "repetitive_pct": 20.0,
+        "detail_score": 0.36,
+        "clip": 0.764,
+        "words": 30.2
+      },
+      "smolvlm-256m [chat_image_zw_short]": {
+        "n": 15,
+        "quality": 56.6,
+        "count_stated_pct": 66.7,
+        "count_correct_pct": 26.7,
+        "count_error": 2.8,
+        "material_count_acc": 0.4,
+        "material_recall": 0.67,
+        "hallucination_pct": 0.0,
+        "repetitive_pct": 6.7,
+        "detail_score": 0.22,
+        "clip": 0.608,
+        "words": 8.3
+      },
+      "template": {
+        "n": 15,
+        "quality": 89.8,
+        "count_stated_pct": 100.0,
+        "count_correct_pct": 100.0,
+        "count_error": 0,
+        "material_count_acc": 1.0,
+        "material_recall": 1.0,
+        "hallucination_pct": 0.0,
+        "repetitive_pct": 0.0,
+        "detail_score": 0.5,
+        "clip": 0.794,
+        "words": 18.4
+      }
+    }
+  }
+}

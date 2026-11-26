@@ -11,6 +11,10 @@ Examples
   python 08_generate_captions.py --models blip-base smolvlm-256m template --subset pilot
   python 08_generate_captions.py --models blip2 qwen2.5-vl-7b --subset all --batch-size 8   # GPU
   python 08_generate_captions.py --models qwen2.5-vl-7b --subset split:test --level image --num-candidates 3
+  python 08_generate_captions.py --models zw-detailed --subset all --source zerowaste   # detailed captions
+
+Models that define an `image_<source>` prompt (e.g. image_zerowaste -> count-aware prompt) use it for
+images of that source instead of their generic image prompt.
 """
 import argparse
 import json
@@ -21,14 +25,16 @@ from collections import defaultdict
 from PIL import Image
 from tqdm import tqdm
 
-from captionlib import (CAPTIONS, crop_object, fill_prompt, load_caption_cfg, make_caption_row, read_jsonl_safe,
-                        template_image_caption, template_object_caption)
+from captionlib import (CAPTIONS, crop_object, detailed_image_caption, detailed_object_caption, fill_prompt,
+                        load_caption_cfg, make_caption_row, read_jsonl_safe, template_image_caption,
+                        template_object_caption)
 from common import PROCESSED, ROOT, SEED, load_taxonomy, read_jsonl
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--models", nargs="+", required=True)
 ap.add_argument("--subset", default="pilot", help="pilot | all | split:<train|val|test> | ids:<file>")
 ap.add_argument("--level", default="both", choices=["image", "object", "both"])
+ap.add_argument("--source", nargs="*", default=None, help="only images from these sources (taco zerowaste coco)")
 ap.add_argument("--limit", type=int, default=None, help="max images (for quick tests)")
 ap.add_argument("--batch-size", type=int, default=4)
 ap.add_argument("--num-candidates", type=int, default=None, help="overrides generation.num_candidates")
@@ -79,7 +85,13 @@ def make_row(model, mcfg, rec, obj, prompt_id, prompt, raw, k, runtime, crop_box
                             gen_params("object" if obj else "image"), crop_box)
 
 
+def image_prompt_id(mcfg, rec):
+    return mcfg["prompts"].get(f"image_{rec['source']}", mcfg["prompts"]["image"])
+
+
 subset = select(records)
+if args.source:
+    subset = [r for r in subset if r["source"] in args.source]
 if args.limit:
     subset = subset[:args.limit]
 print(f"{len(subset)} images selected ({args.subset})")
@@ -90,22 +102,27 @@ for model in args.models:
     done = {r["caption_id"] for r in read_jsonl_safe(out_path)}
     fout = open(out_path, "a")
 
-    # ---- rule-based baseline: no model to load ----
-    if mcfg["backend"] == "template":
+    # ---- rule-based captions: no model to load ----
+    if mcfg["backend"] in ("template", "detailed"):
+        detailed = mcfg["backend"] == "detailed"
         n_new = 0
         for rec in subset:
+            if mcfg.get("sources") and rec["source"] not in mcfg["sources"]:
+                continue
+            img = Image.open(ROOT / "data" / rec["file_name"]).convert("RGB") if detailed else None
             jobs = []
             if args.level in ("image", "both"):
-                jobs.append((None, template_image_caption(rec)))
+                jobs.append((None, detailed_image_caption(rec, img) if detailed else template_image_caption(rec)))
             if args.level in ("object", "both"):
-                jobs += [(o, template_object_caption(o, rec["source"])) for o in objects_to_caption(rec)]
+                jobs += [(o, detailed_object_caption(o, rec["source"], img) if detailed
+                          else template_object_caption(o, rec["source"])) for o in objects_to_caption(rec)]
             for obj, text in jobs:
-                row = make_row(model, mcfg, rec, obj, "template", None, text, 0, 0.0)
+                row = make_row(model, mcfg, rec, obj, mcfg["backend"], None, text, 0, 0.0)
                 if row["caption_id"] not in done:
                     fout.write(json.dumps(row) + "\n")
                     n_new += 1
         fout.close()
-        print(f"[{model}] wrote {n_new} template captions")
+        print(f"[{model}] wrote {n_new} {mcfg['backend']} captions")
         continue
 
     from vlm import load_captioner   # imported lazily so the template baseline needs no torch
@@ -117,8 +134,8 @@ for model in args.models:
     jobs = []
     for rec in subset:
         if args.level in ("image", "both"):
-            pid = mcfg["prompts"]["image"]
-            jobs.append((rec, None, pid, fill_prompt(cfg["prompts"][pid]), None))
+            pid = image_prompt_id(mcfg, rec)
+            jobs.append((rec, None, pid, fill_prompt(cfg["prompts"][pid], rec), None))
         if args.level in ("object", "both"):
             pid = mcfg["prompts"]["object"]
             for o in objects_to_caption(rec):
